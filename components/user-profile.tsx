@@ -696,21 +696,24 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     }));
   };
   
-  // Get sector colors for consistency
+  // Update the getSectorColor function to use more vibrant colors
   const getSectorColor = (sector: string): string => {
-    const colorMap: Record<string, string> = {
-      'Technology': 'bg-blue-500/70',
-      'Financial': 'bg-green-500/70',
-      'Healthcare': 'bg-red-500/70',
-      'Consumer Cyclical': 'bg-yellow-500/70',
-      'Consumer Defensive': 'bg-purple-500/70',
-      'Energy': 'bg-orange-500/70',
-      'Communication': 'bg-pink-500/70',
-      'Industrial': 'bg-indigo-500/70',
-      'Other': 'bg-gray-500/70'
+    const colorMap: { [key: string]: string } = {
+      Technology: 'rgb(59, 130, 246)', // bright blue
+      Healthcare: 'rgb(16, 185, 129)', // bright green
+      Financial: 'rgb(245, 158, 11)', // bright amber
+      Consumer: 'rgb(236, 72, 153)', // bright pink
+      Energy: 'rgb(139, 92, 246)', // bright purple
+      Telecom: 'rgb(6, 182, 212)', // bright cyan
+      Materials: 'rgb(248, 113, 113)', // bright red
+      Industrial: 'rgb(251, 146, 60)', // bright orange
+      Utilities: 'rgb(124, 58, 237)', // bright violet
+      Real: 'rgb(52, 211, 153)', // bright emerald
+      'Consumer Discretionary': 'rgb(244, 114, 182)', // bright pink
+      'Consumer Staples': 'rgb(251, 191, 36)', // bright yellow
     };
-    
-    return colorMap[sector] || 'bg-gray-500/70';
+
+    return colorMap[sector] || 'rgb(156, 163, 175)'; // default: gray-400
   };
   
   // Calculate the sector distribution once
@@ -824,6 +827,69 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
   
   const handleMouseLeave = () => {
     setTooltipData(prev => ({ ...prev, visible: false }));
+  };
+
+  // Helper function to get industries for a sector
+  const getIndustriesForSector = (sector: string, percentage: number): {name: string, percentage: number}[] => {
+    // This is a simplified version - in a real implementation, this would be based on actual data
+    switch(sector) {
+      case 'Technology':
+        return [
+          { name: 'Semiconductors', percentage: 40 },
+          { name: 'Tech Hardware', percentage: 30 },
+          { name: 'Software', percentage: 30 }
+        ];
+      case 'Financial':
+        return [
+          { name: 'Banks', percentage: 60 },
+          { name: 'Insurance', percentage: 40 }
+        ];
+      case 'Healthcare':
+        return [
+          { name: 'Pharma', percentage: 50 },
+          { name: 'Medical Devices', percentage: 50 }
+        ];
+      case 'Consumer Cyclical':
+        return [
+          { name: 'Retail', percentage: 70 },
+          { name: 'Automotive', percentage: 30 }
+        ];
+      case 'Energy':
+        return [
+          { name: 'Oil & Gas', percentage: 100 }
+        ];
+      case 'Communication':
+        return [
+          { name: 'Telecom', percentage: 50 },
+          { name: 'Media', percentage: 50 }
+        ];
+      default:
+        return [
+          { name: sector, percentage: 100 }
+        ];
+    }
+  };
+
+  // Helper function to generate a smooth Sankey path
+  const generateSankeyPath = (
+    sourceX: number, 
+    sourceY: number, 
+    sourceHeight: number,
+    targetX: number, 
+    targetY: number, 
+    targetHeight: number
+  ): string => {
+    // Control point distance (for the bezier curve)
+    const controlPointDistance = (targetX - sourceX) * 0.5;
+    
+    // Create a curved path that maintains the flow width
+    return `
+      M ${sourceX} ${sourceY}
+      C ${sourceX + controlPointDistance} ${sourceY}, ${targetX - controlPointDistance} ${targetY}, ${targetX} ${targetY}
+      L ${targetX} ${targetY + targetHeight}
+      C ${targetX - controlPointDistance} ${targetY + targetHeight}, ${sourceX + controlPointDistance} ${sourceY + sourceHeight}, ${sourceX} ${sourceY + sourceHeight}
+      Z
+    `;
   };
 
   return (
@@ -1314,16 +1380,382 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
               {/* Sector Distribution */}
               <div>
                 <h3 className="text-lg font-medium mb-3">Sector Distribution</h3>
-                <div className="h-10 bg-muted rounded-md overflow-hidden flex">
-                  {sectorDistribution.map((sector) => (
-                    <div 
-                      key={sector.name}
-                      className={`h-full ${getSectorColor(sector.name)}`} 
-                      style={{ width: `${sector.percentage}%` }} 
-                      title={`${sector.name}: ${sector.percentage}%`}
-                    ></div>
-                  ))}
+                {/* True Sankey Diagram with colored flowing paths */}
+                <div className="h-[400px] w-full bg-slate-900/30 rounded-md relative overflow-hidden">
+                  <svg 
+                    width="100%" 
+                    height="100%" 
+                    viewBox="0 0 1000 400" 
+                    preserveAspectRatio="xMidYMid meet"
+                    className="overflow-visible"
+                  >
+                    <g className="sankey-diagram">
+                      {/* Generate flows and nodes based on portfolio data */}
+                      {(() => {
+                        // Column positions
+                        const colPositions = {
+                          portfolio: 50,
+                          sector: 300,
+                          industry: 600,
+                          ticker: 900
+                        };
+                        
+                        // Calculate all the node positions first
+                        // Start with the portfolio node
+                        const nodes: {
+                          id: string;
+                          x: number;
+                          y: number;
+                          width: number;
+                          height: number;
+                          label: string;
+                          value: number;
+                          percentage: string;
+                          color: string;
+                          type: 'portfolio' | 'sector' | 'industry' | 'ticker';
+                        }[] = [];
+                        
+                        // Portfolio node
+                        nodes.push({
+                          id: 'portfolio',
+                          x: colPositions.portfolio,
+                          y: 50,
+                          width: 30,
+                          height: 300,
+                          label: 'Portfolio',
+                          value: summary?.totalCurrentValue || 0,
+                          percentage: '100%',
+                          color: 'rgb(59, 130, 246)', // bright blue
+                          type: 'portfolio'
+                        });
+                        
+                        // Calculate sector nodes with more vibrant colors
+                        let sectorY = 50;
+                        sectorDistribution.forEach((sector) => {
+                          const sectorValue = parseFloat(sector.percentage);
+                          const sectorHeight = Math.max(30, (sectorValue / 100) * 300);
+                          
+                          nodes.push({
+                            id: `sector-${sector.name}`,
+                            x: colPositions.sector,
+                            y: sectorY,
+                            width: 30,
+                            height: sectorHeight,
+                            label: sector.name,
+                            value: (summary?.totalCurrentValue || 0) * (sectorValue / 100),
+                            percentage: `${sectorValue.toFixed(1)}%`,
+                            color: getSectorColor(sector.name), // Use the updated color function
+                            type: 'sector'
+                          });
+                          
+                          sectorY += sectorHeight + 10; // Add spacing between nodes
+                        });
+                        
+                        // Calculate industry nodes with related but distinct colors
+                        let industryY = 50;
+                        sectorDistribution.forEach((sector) => {
+                          const sectorValue = parseFloat(sector.percentage);
+                          const industries = getIndustriesForSector(sector.name, sectorValue);
+                          const baseSectorColor = getSectorColor(sector.name);
+                          
+                          industries.forEach((industry, index) => {
+                            const industryValue = (industry.percentage / 100) * sectorValue;
+                            const industryHeight = Math.max(25, (industryValue / 100) * 300);
+                            
+                            // Create a slight color variation for each industry
+                            const industryColor = baseSectorColor;
+                            
+                            nodes.push({
+                              id: `industry-${sector.name}-${industry.name}`,
+                              x: colPositions.industry,
+                              y: industryY,
+                              width: 30,
+                              height: industryHeight,
+                              label: industry.name,
+                              value: (summary?.totalCurrentValue || 0) * (industryValue / 100),
+                              percentage: `${industryValue.toFixed(1)}%`,
+                              color: industryColor,
+                              type: 'industry'
+                            });
+                            
+                            industryY += industryHeight + 5; // Add spacing between nodes
+                          });
+                          
+                          industryY += 5; // Add extra spacing between industry groups
+                        });
+                        
+                        // Calculate ticker nodes with slightly different color variations
+                        let tickerY = 50;
+                        portfolio.forEach((stock) => {
+                          const stockValue = stock.currentValue;
+                          const stockPercentage = (stockValue / (summary?.totalCurrentValue || 1)) * 100;
+                          const stockHeight = Math.max(20, (stockPercentage / 100) * 300);
+                          const sector = getStockSector(stock.symbol);
+                          const tickerColor = getSectorColor(sector);
+                          
+                          nodes.push({
+                            id: `ticker-${stock.symbol}`,
+                            x: colPositions.ticker,
+                            y: tickerY,
+                            width: 30,
+                            height: stockHeight,
+                            label: stock.symbol,
+                            value: stockValue,
+                            percentage: `${stockPercentage.toFixed(1)}%`,
+                            color: tickerColor,
+                            type: 'ticker'
+                          });
+                          
+                          tickerY += stockHeight + 5; // Add spacing between nodes
+                        });
+                        
+                        // Now create the links between nodes with vibrant colors
+                        const links: {
+                          id: string;
+                          source: string;
+                          target: string;
+                          value: number;
+                          color: string;
+                          sourceSide?: 'right';
+                          targetSide?: 'left';
+                          path: string;
+                        }[] = [];
+                        
+                        // Links from portfolio to sectors
+                        sectorDistribution.forEach((sector) => {
+                          const sectorNode = nodes.find(n => n.id === `sector-${sector.name}`);
+                          const portfolioNode = nodes.find(n => n.id === 'portfolio');
+                          
+                          if (sectorNode && portfolioNode) {
+                            const sectorValue = parseFloat(sector.percentage);
+                            const portfolioHeight = portfolioNode.height;
+                            const sectorHeight = sectorNode.height;
+                            const sectorPortion = sectorValue / 100;
+                            
+                            // Calculate source coordinates (right side of portfolio node)
+                            const sourceX = portfolioNode.x + portfolioNode.width;
+                            const sourceY = portfolioNode.y + (portfolioHeight * 0.5 - (portfolioHeight * sectorPortion * 0.5));
+                            const sourceHeight = portfolioHeight * sectorPortion;
+                            
+                            // Calculate target coordinates (left side of sector node)
+                            const targetX = sectorNode.x;
+                            const targetY = sectorNode.y;
+                            const targetHeight = sectorHeight;
+                            
+                            // Create bezier curve path
+                            const path = generateSankeyPath(
+                              sourceX, sourceY, sourceHeight,
+                              targetX, targetY, targetHeight
+                            );
+                            
+                            links.push({
+                              id: `link-portfolio-${sector.name}`,
+                              source: 'portfolio',
+                              target: `sector-${sector.name}`,
+                              value: (summary?.totalCurrentValue || 0) * (sectorValue / 100),
+                              color: sectorNode.color, // Use the sector color for the flow
+                              path: path
+                            });
+                          }
+                        });
+                        
+                        // Links from sectors to industries
+                        sectorDistribution.forEach((sector) => {
+                          const sectorNode = nodes.find(n => n.id === `sector-${sector.name}`);
+                          
+                          if (sectorNode) {
+                            const industries = getIndustriesForSector(sector.name, parseFloat(sector.percentage));
+                            
+                            let sectorOffsetY = 0;
+                            industries.forEach((industry) => {
+                              const industryNode = nodes.find(n => n.id === `industry-${sector.name}-${industry.name}`);
+                              
+                              if (industryNode) {
+                                const industryValue = (industry.percentage / 100) * parseFloat(sector.percentage);
+                                const industryPortion = industry.percentage / 100;
+                                
+                                // Calculate source coordinates (right side of sector node)
+                                const sourceX = sectorNode.x + sectorNode.width;
+                                const sourceY = sectorNode.y + sectorOffsetY;
+                                const sourceHeight = sectorNode.height * industryPortion;
+                                
+                                // Calculate target coordinates (left side of industry node)
+                                const targetX = industryNode.x;
+                                const targetY = industryNode.y;
+                                const targetHeight = industryNode.height;
+                                
+                                // Create bezier curve path
+                                const path = generateSankeyPath(
+                                  sourceX, sourceY, sourceHeight,
+                                  targetX, targetY, targetHeight
+                                );
+                                
+                                links.push({
+                                  id: `link-${sector.name}-${industry.name}`,
+                                  source: `sector-${sector.name}`,
+                                  target: `industry-${sector.name}-${industry.name}`,
+                                  value: (summary?.totalCurrentValue || 0) * (industryValue / 100),
+                                  color: industryNode.color, // Use the industry color for the flow
+                                  path: path
+                                });
+                                
+                                sectorOffsetY += sourceHeight;
+                              }
+                            });
+                          }
+                        });
+                        
+                        // Links from industries to tickers
+                        portfolio.forEach((stock) => {
+                          const tickerNode = nodes.find(n => n.id === `ticker-${stock.symbol}`);
+                          const sector = getStockSector(stock.symbol);
+                          
+                          // Find the industry this ticker belongs to (simplified mapping)
+                          const industries = getIndustriesForSector(sector, 100);
+                          let targetIndustry = industries[0]?.name || sector;
+                          
+                          // Map specific tickers to specific industries if needed
+                          if (sector === 'Technology') {
+                            if (['NVDA', 'AMD', 'INTC'].includes(stock.symbol)) {
+                              targetIndustry = 'Semiconductors';
+                            } else if (['AAPL', 'MSFT'].includes(stock.symbol)) {
+                              targetIndustry = 'Tech Hardware';
+                            } else {
+                              targetIndustry = 'Software';
+                            }
+                          } else if (sector === 'Financial') {
+                            if (['JPM', 'BAC', 'WFC'].includes(stock.symbol)) {
+                              targetIndustry = 'Banks';
+                            } else {
+                              targetIndustry = 'Insurance';
+                            }
+                          }
+                          
+                          const industryNode = nodes.find(n => n.id === `industry-${sector}-${targetIndustry}`);
+                          
+                          if (tickerNode && industryNode) {
+                            const stockValue = stock.currentValue;
+                            const stockPercentage = (stockValue / (summary?.totalCurrentValue || 1)) * 100;
+                            
+                            // Calculate a relative position on the industry node based on the ticker value
+                            const sourceX = industryNode.x + industryNode.width;
+                            const sourceY = industryNode.y + (industryNode.height * 0.2);
+                            const sourceHeight = industryNode.height * 0.6; // Use a portion of the height
+                            
+                            // Target coordinates
+                            const targetX = tickerNode.x;
+                            const targetY = tickerNode.y;
+                            const targetHeight = tickerNode.height;
+                            
+                            // Create bezier curve path
+                            const path = generateSankeyPath(
+                              sourceX, sourceY, sourceHeight,
+                              targetX, targetY, targetHeight
+                            );
+                            
+                            links.push({
+                              id: `link-${targetIndustry}-${stock.symbol}`,
+                              source: `industry-${sector}-${targetIndustry}`,
+                              target: `ticker-${stock.symbol}`,
+                              value: stockValue,
+                              color: tickerNode.color, // Use the ticker color for the flow
+                              path: path
+                            });
+                          }
+                        });
+                        
+                        // Render all the links first (so they're behind the nodes)
+                        return (
+                          <>
+                            {/* Render links (flows) - updated for more vibrant appearance */}
+                            <defs>
+                              {/* Define gradients for each sector color */}
+                              {sectorDistribution.map((sector) => {
+                                const baseColor = getSectorColor(sector.name);
+                                return (
+                                  <linearGradient 
+                                    key={`gradient-${sector.name}`} 
+                                    id={`gradient-${sector.name}`} 
+                                    x1="0%" 
+                                    y1="0%" 
+                                    x2="100%" 
+                                    y2="0%"
+                                  >
+                                    <stop offset="0%" stopColor={baseColor} stopOpacity="0.9" />
+                                    <stop offset="100%" stopColor={baseColor} stopOpacity="0.7" />
+                                  </linearGradient>
+                                );
+                              })}
+                            </defs>
+                            
+                            {links.map((link) => {
+                              const sourceSectorName = link.source.startsWith('sector-') 
+                                ? link.source.replace('sector-', '') 
+                                : link.source === 'portfolio' 
+                                  ? 'Technology' // Default for portfolio
+                                  : link.source.split('-')[1]; // Get sector name from industry ID
+                              
+                              return (
+                                <path
+                                  key={link.id}
+                                  d={link.path}
+                                  fill={`url(#gradient-${sourceSectorName})`}
+                                  stroke="none"
+                                  opacity={1.0}
+                                />
+                              );
+                            })}
+                            
+                            {/* Render nodes with brighter colors */}
+                            {nodes.map((node) => (
+                              <g key={node.id} transform={`translate(${node.x},${node.y})`}>
+                                {/* Node rectangle with shadow effect for depth */}
+                                <defs>
+                                  <filter id={`shadow-${node.id}`} x="-20%" y="-20%" width="140%" height="140%">
+                                    <feDropShadow dx="1" dy="1" stdDeviation="2" floodOpacity="0.3" />
+                                  </filter>
+                                </defs>
+                                
+                                <rect
+                                  width={node.width}
+                                  height={node.height}
+                                  fill={node.color}
+                                  rx={3}
+                                  ry={3}
+                                  filter={`url(#shadow-${node.id})`}
+                                />
+                                
+                                {/* Node label with better contrast */}
+                                <text
+                                  x={node.type === 'portfolio' ? -10 : node.width + 10}
+                                  y={node.height / 2}
+                                  textAnchor={node.type === 'portfolio' ? 'end' : 'start'}
+                                  alignmentBaseline="middle"
+                                  fill="white"
+                                  fontSize={node.type === 'ticker' ? 10 : 12}
+                                  fontWeight={node.type === 'portfolio' || node.type === 'sector' ? 'bold' : 'normal'}
+                                  style={{ textShadow: '0px 0px 3px rgba(0,0,0,0.5)' }}
+                                >
+                                  {node.label} {node.percentage}
+                                </text>
+                              </g>
+                            ))}
+                          </>
+                        );
+                      })()}
+                    </g>
+                  </svg>
+                  
+                  {/* Header labels */}
+                  <div className="absolute top-0 left-0 right-0 flex text-xs text-muted-foreground p-1">
+                    <div className="w-[10%] text-left pl-10">Portfolio</div>
+                    <div className="w-[30%] text-center">Sector</div>
+                    <div className="w-[30%] text-center">Industry</div>
+                    <div className="w-[30%] text-right pr-10">Ticker</div>
+                  </div>
                 </div>
+                
+                {/* Legend */}
                 <div className="flex flex-wrap gap-2 mt-2">
                   {sectorDistribution.map((sector) => (
                     <div key={sector.name} className="flex items-center text-xs">
