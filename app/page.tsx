@@ -9,21 +9,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export default function Home() {
   const { user } = useAuth();
   const [dbInitialized, setDbInitialized] = useState<boolean | null>(null);
+  const [isInitializing, setIsInitializing] = useState(false);
 
-  // Initialize the database when the app loads
+  // Initialize the database when the app loads, but only client-side
   useEffect(() => {
     const initializeDb = async () => {
       try {
+        setIsInitializing(true);
         const response = await fetch('/api/init-db');
         const data = await response.json();
         setDbInitialized(data.success);
       } catch (error) {
         console.error('Failed to initialize database:', error);
         setDbInitialized(false);
+      } finally {
+        setIsInitializing(false);
       }
     };
 
-    initializeDb();
+    // Only run in the browser, not during Next.js static generation
+    if (typeof window !== 'undefined') {
+      initializeDb();
+    }
   }, []);
 
   return (
@@ -38,10 +45,18 @@ export default function Home() {
             : 'Login to start tracking your stocks'}
         </p>
         
-        {dbInitialized === false && (
+        {dbInitialized === false && !isInitializing && (
           <div className="bg-red-900/20 p-4 rounded-md">
             <p className="text-center text-red-400">
-              Failed to initialize database. Please try again.
+              Failed to initialize database. Please try again or check the Setup tab.
+            </p>
+          </div>
+        )}
+
+        {isInitializing && (
+          <div className="bg-amber-900/20 p-4 rounded-md">
+            <p className="text-center text-amber-400">
+              Initializing database...
             </p>
           </div>
         )}

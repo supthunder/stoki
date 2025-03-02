@@ -1,27 +1,50 @@
 import { createClient } from '@vercel/postgres';
 
-// Get connection string from environment variables - try all possible environment variable names
-const connectionString = 
-  process.env.POSTGRES_URL_NON_POOLING || 
-  process.env.POSTGRES_URL || 
-  process.env.DATABASE_URL;
+// Create a lazy-loaded client to prevent connection during build time
+let db: ReturnType<typeof createClient> | null = null;
 
-// Log connection status for debugging (without exposing sensitive details)
-if (!connectionString) {
-  console.error('Database connection string missing. Please check your environment variables.');
-  console.error('Required environment variables: POSTGRES_URL_NON_POOLING, POSTGRES_URL, or DATABASE_URL');
-} else {
-  console.log('Database connection string found.');
+// Function to get database client, creating it only when needed
+export function getDbClient() {
+  // Skip database connection during build time
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    console.log('Skipping database connection during build phase');
+    // Return a mock client during build with a very basic implementation
+    return {
+      sql: async () => ({ rows: [] })
+    } as unknown as ReturnType<typeof createClient>;
+  }
+
+  // If client already exists, return it
+  if (db) return db;
+
+  // Get connection string from environment variables
+  const connectionString = 
+    process.env.POSTGRES_URL_NON_POOLING || 
+    process.env.POSTGRES_URL || 
+    process.env.DATABASE_URL;
+
+  // Log connection status for debugging (without exposing sensitive details)
+  if (!connectionString) {
+    console.error('Database connection string missing. Please check your environment variables.');
+    console.error('Required environment variables: POSTGRES_URL_NON_POOLING, POSTGRES_URL, or DATABASE_URL');
+    throw new Error('Database connection string missing');
+  } else {
+    console.log('Database connection string found.');
+  }
+
+  // Create a new client
+  db = createClient({
+    connectionString
+  });
+
+  return db;
 }
-
-// For serverless environments, specify both pooling and non-pooling options
-const db = createClient({
-  connectionString
-});
 
 // Initialize the database by creating tables if they don't exist
 export async function initializeDb() {
   try {
+    const db = getDbClient();
+    
     // Create users table
     await db.sql`
       CREATE TABLE IF NOT EXISTS users (
@@ -58,6 +81,7 @@ export async function initializeDb() {
 
 export async function createUser(username: string) {
   try {
+    const db = getDbClient();
     const result = await db.sql`
       INSERT INTO users (username)
       VALUES (${username})
@@ -82,6 +106,7 @@ export async function createUser(username: string) {
 
 export async function getUserByUsername(username: string) {
   try {
+    const db = getDbClient();
     const result = await db.sql`
       SELECT id, username FROM users WHERE username = ${username}
     `;
@@ -101,6 +126,7 @@ export async function addStockToUser(
   purchasePrice: number
 ) {
   try {
+    const db = getDbClient();
     const result = await db.sql`
       INSERT INTO user_stocks (user_id, symbol, company_name, quantity, purchase_price)
       VALUES (${userId}, ${symbol}, ${companyName}, ${quantity}, ${purchasePrice})
@@ -119,6 +145,7 @@ export async function addStockToUser(
 
 export async function getUserStocks(userId: number) {
   try {
+    const db = getDbClient();
     const result = await db.sql`
       SELECT id, symbol, company_name, quantity, purchase_price, purchase_date
       FROM user_stocks
@@ -137,6 +164,7 @@ export async function updateStockQuantity(
   newQuantity: number
 ) {
   try {
+    const db = getDbClient();
     if (newQuantity <= 0) {
       // Delete the stock if quantity is 0 or negative
       await db.sql`DELETE FROM user_stocks WHERE id = ${stockId}`;

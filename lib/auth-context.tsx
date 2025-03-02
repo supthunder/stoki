@@ -29,10 +29,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check for existing user cookie on load
+  // Check for existing user cookie on load - only in browser
   useEffect(() => {
     const checkUser = async () => {
       try {
+        // Ensure this only runs client-side
+        if (typeof window === 'undefined') return;
+        
         const userCookie = Cookies.get(USER_COOKIE);
         if (userCookie) {
           const userData = JSON.parse(userCookie);
@@ -57,7 +60,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error("Error checking user:", error);
         // If there's an error, clear the cookie
-        Cookies.remove(USER_COOKIE);
+        if (typeof window !== 'undefined') {
+          Cookies.remove(USER_COOKIE);
+        }
       } finally {
         setLoading(false);
       }
@@ -89,11 +94,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Set user in state
       setUser(data.user);
       
-      // Save user in cookie (30 days)
-      Cookies.set(USER_COOKIE, JSON.stringify(data.user), { 
-        expires: COOKIE_EXPIRATION,
-        sameSite: 'strict'
-      });
+      // Save user in cookie (30 days) - only in browser
+      if (typeof window !== 'undefined') {
+        Cookies.set(USER_COOKIE, JSON.stringify(data.user), { 
+          expires: COOKIE_EXPIRATION,
+          sameSite: 'strict'
+        });
+      }
     } catch (error) {
       console.error("Error during login:", error);
       throw error;
@@ -105,7 +112,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Logout function
   const logout = () => {
     setUser(null);
-    Cookies.remove(USER_COOKIE);
+    if (typeof window !== 'undefined') {
+      Cookies.remove(USER_COOKIE);
+    }
   };
 
   return (

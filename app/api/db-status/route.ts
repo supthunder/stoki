@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from '@vercel/postgres';
+import { getDbClient } from '@/lib/db';
+
+// Add this to prevent static generation of this API route
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
@@ -24,8 +27,8 @@ export async function GET() {
       }, { status: 500 });
     }
 
-    // Test connection
-    const db = createClient({ connectionString });
+    // Test connection using the new getDbClient function
+    const db = getDbClient();
     
     // Try to execute a simple query
     const result = await db.sql`SELECT 1 as connection_test`;

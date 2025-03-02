@@ -23,6 +23,7 @@ export function SetupGuide() {
   const [initialized, setInitialized] = useState(false);
   const [initLoading, setInitLoading] = useState(false);
 
+  // This function will only be called on user interaction, not during build
   const checkDbStatus = async () => {
     try {
       setLoading(true);
@@ -89,7 +90,7 @@ export function SetupGuide() {
           <AlertDescription className="mt-2">
             {dbStatus.message}
             {dbStatus.error && (
-              <pre className="mt-2 p-2 bg-muted rounded-md text-xs overflow-auto">
+              <pre className="mt-2 p-2 bg-muted rounded-md text-xs overflow-auto max-h-40">
                 {dbStatus.error}
               </pre>
             )}
@@ -150,7 +151,7 @@ export function SetupGuide() {
             <li>Check that you have created a Postgres database in Vercel.</li>
             <li>Verify that your .env.local file contains the correct connection strings.</li>
             <li>Make sure you've copied all environment variables from the Vercel dashboard.</li>
-            <li>If using a custom provider, ensure your connection string format is correct.</li>
+            <li>For Vercel deployments, add all database environment variables in your project settings.</li>
             <li>For local development, make sure you've run <code className="bg-background px-1 rounded">npm run dev</code> with the updated environment variables.</li>
           </ul>
         </div>

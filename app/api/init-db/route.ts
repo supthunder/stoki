@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { initializeDb } from "@/lib/db";
 
+// Add this to prevent static generation of this API route
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     await initializeDb();
