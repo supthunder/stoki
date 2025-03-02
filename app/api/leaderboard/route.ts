@@ -75,6 +75,8 @@ export async function GET() {
       ORDER BY total_invested DESC
     `;
     
+    console.log('Leaderboard query result:', result);
+    
     // Collect all unique stock symbols across all users
     const allSymbols = new Set<string>();
     for (const user of result) {
@@ -117,8 +119,11 @@ export async function GET() {
     
     // Process the results to calculate gains
     const leaderboardData = result.map((user: Record<string, any>) => {
+      console.log('Processing user:', user.name, 'with stocks:', user.stocks ? (Array.isArray(user.stocks) ? user.stocks.length : 'non-array') : 'none');
+      
       // Skip users with no stocks
       if (!user.stocks || !Array.isArray(user.stocks) || user.stocks.length === 0) {
+        console.log('Skipping user:', user.name, 'because they have no stocks');
         return {
           id: user.id,
           name: user.name,
