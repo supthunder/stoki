@@ -322,18 +322,18 @@ export function UserLeaderboard() {
               <TableRow>
                 <TableHead className="w-[60px]">Rank</TableHead>
                 <TableHead>User</TableHead>
-                <TableHead className="cursor-pointer" onClick={() => handleSort("dailyGain")}>
+                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
                   Daily {sortBy === "dailyGain" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
-                <TableHead className="cursor-pointer" onClick={() => handleSort("weeklyGain")}>
+                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("weeklyGain")}>
                   7-Day {sortBy === "weeklyGain" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
-                <TableHead className="cursor-pointer" onClick={() => handleSort("totalGain")}>
+                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("totalGain")}>
                   Total Gain {sortBy === "totalGain" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
-                <TableHead>Trend</TableHead>
-                <TableHead>Holdings</TableHead>
-                <TableHead className="text-right cursor-pointer" onClick={() => handleSort("currentWorth")}>
+                <TableHead className="hidden md:table-cell">Trend</TableHead>
+                <TableHead className="hidden md:table-cell">Holdings</TableHead>
+                <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
                   Net Worth {sortBy === "currentWorth" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
               </TableRow>
@@ -348,8 +348,8 @@ export function UserLeaderboard() {
                     <TableCell><Skeleton className="h-8 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-8 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-8 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-10 w-16" /></TableCell>
-                    <TableCell><Skeleton className="h-10 w-16" /></TableCell>
+                    <TableCell className="hidden md:table-cell"><Skeleton className="h-10 w-16" /></TableCell>
+                    <TableCell className="hidden md:table-cell"><Skeleton className="h-10 w-16" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                   </TableRow>
                 ))
@@ -367,18 +367,20 @@ export function UserLeaderboard() {
                     onClick={() => handleUserClick(user)}
                   >
                     <TableCell className="font-medium">{index + 1}</TableCell>
-                    <TableCell className="font-medium">
-                      {user.name}
-                      {user.topGainer && (
-                        <div className="mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            Top: {user.topGainer} ({user.topGainerPercentage}%)
-                          </Badge>
-                        </div>
-                      )}
+                    <TableCell className="font-medium max-w-[120px] md:max-w-none">
+                      <div className="truncate">
+                        {user.name}
+                        {user.topGainer && (
+                          <div className="mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              Top: {user.topGainer} ({user.topGainerPercentage}%)
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
+                      <div className="flex flex-col whitespace-nowrap">
                         <span
                           className={
                             parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
@@ -399,7 +401,7 @@ export function UserLeaderboard() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
+                      <div className="flex flex-col whitespace-nowrap">
                         <span
                           className={
                             parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
@@ -420,7 +422,7 @@ export function UserLeaderboard() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
+                      <div className="flex flex-col whitespace-nowrap">
                         <span
                           className={
                             parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
@@ -440,13 +442,13 @@ export function UserLeaderboard() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <MiniChart data={user.chartData} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <StockDistributionChart data={user.stockDistribution} />
                     </TableCell>
-                    <TableCell className="text-right font-medium">
+                    <TableCell className="text-right font-medium whitespace-nowrap">
                       {user.currentWorth}
                     </TableCell>
                   </TableRow>
@@ -456,7 +458,7 @@ export function UserLeaderboard() {
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {loading ? (
             // Card loading skeletons
             Array(4).fill(0).map((_, index) => (
