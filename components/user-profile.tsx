@@ -39,6 +39,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { Combobox } from "@/components/ui/combobox";
 
 // Types for stock data matching what we have in user-portfolio.tsx
 type Stock = {
@@ -102,6 +103,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
   const [comparisonData, setComparisonData] = useState<Record<string, PerformanceData[]>>({});
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [usersList, setUsersList] = useState<{id: number, name: string}[]>([]);
+  const [searchValue, setSearchValue] = useState("");
   
   // State for hover tooltip
   const [tooltipData, setTooltipData] = useState<{
@@ -245,7 +247,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
         // Use oldest purchase date to now
         const days = getOldestPurchaseDate();
         
-        // Use force=true to ensure we get complete data from the beginning to now
+        // Always use force=true to ensure complete data
         const response = await fetch(`/api/portfolio/performance?userId=${userId}&days=${days}&refresh=true&force=true`);
         
         if (!response.ok) {
@@ -421,8 +423,8 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
           const currentUserId = `user-${user.id}`;
           // Skip if already in the selected comparisons
           if (!selectedComparisons.includes(currentUserId)) {
-            // Use cached data for comparison charts (don't use refresh=true)
-            const response = await fetch(`/api/portfolio/performance?userId=${user.id}&days=${days}`);
+            // Use force=true to ensure complete data from beginning to now
+            const response = await fetch(`/api/portfolio/performance?userId=${user.id}&days=${days}&force=true`);
             
             if (response.ok) {
               const data = await response.json();
@@ -431,7 +433,11 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                 const sortedData = [...data.performance].sort((a, b) => 
                   new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
-                newComparisonData[currentUserId] = sortedData;
+                console.log(`Current user comparison data: ${sortedData.length} points from ${sortedData[0]?.date} to ${sortedData[sortedData.length-1]?.date}`);
+                
+                // Fill gaps in data to ensure continuous timeline
+                const filledData = fillDateGaps(sortedData);
+                newComparisonData[currentUserId] = filledData;
               }
             }
           }
@@ -444,8 +450,8 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
       for (const comparisonId of selectedComparisons) {
         try {
           if (comparisonId === 'sp500' || comparisonId === 'nasdaq') {
-            // Fetch index data
-            const response = await fetch(`/api/market-index?index=${comparisonId}&days=${days}`);
+            // Fetch index data with force=true
+            const response = await fetch(`/api/market-index?index=${comparisonId}&days=${days}&force=true`);
             
             if (response.ok) {
               const data = await response.json();
@@ -454,7 +460,11 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                 const sortedData = [...data.performance].sort((a, b) => 
                   new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
-                newComparisonData[comparisonId] = sortedData;
+                console.log(`${comparisonId} data: ${sortedData.length} points from ${sortedData[0]?.date} to ${sortedData[sortedData.length-1]?.date}`);
+                
+                // Fill gaps in data
+                const filledData = fillDateGaps(sortedData);
+                newComparisonData[comparisonId] = filledData;
               } else {
                 // Generate mock data for indices if API not implemented
                 newComparisonData[comparisonId] = generateMockIndexData(
@@ -470,10 +480,9 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
               );
             }
           } else if (comparisonId.startsWith('user-')) {
-            // Fetch other user data
+            // Fetch other user data with force=true
             const otherUserId = comparisonId.split('user-')[1];
-            // Use cached data for comparisons (don't use refresh=true)
-            const response = await fetch(`/api/portfolio/performance?userId=${otherUserId}&days=${days}`);
+            const response = await fetch(`/api/portfolio/performance?userId=${otherUserId}&days=${days}&force=true`);
             
             if (response.ok) {
               const data = await response.json();
@@ -482,7 +491,11 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                 const sortedData = [...data.performance].sort((a, b) => 
                   new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
-                newComparisonData[comparisonId] = sortedData;
+                console.log(`${comparisonId} data: ${sortedData.length} points from ${sortedData[0]?.date} to ${sortedData[sortedData.length-1]?.date}`);
+                
+                // Fill gaps in data
+                const filledData = fillDateGaps(sortedData);
+                newComparisonData[comparisonId] = filledData;
               }
             }
           }
@@ -593,6 +606,9 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
       
       return Array.from(uniqueComparisons);
     });
+    
+    // Reset search value
+    setSearchValue("");
   };
 
   // Get color for each data series
@@ -988,6 +1004,45 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     `;
   };
 
+  // Add this helper function before the useEffect
+  const fillDateGaps = (data: PerformanceData[]): PerformanceData[] => {
+    if (!data || data.length === 0) return [];
+    
+    // Sort by date to ensure chronological order
+    const sortedData = [...data].sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    
+    const firstDate = new Date(sortedData[0].date);
+    const lastDate = new Date(sortedData[sortedData.length - 1].date);
+    const fullDateRange: PerformanceData[] = [];
+    
+    // Create a continuous date range
+    const currentDate = new Date(firstDate);
+    let prevValue = sortedData[0].value;
+    
+    while (currentDate <= lastDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const existingPoint = sortedData.find(p => p.date === dateStr);
+      
+      if (existingPoint) {
+        fullDateRange.push(existingPoint);
+        prevValue = existingPoint.value;
+      } else {
+        // If no data for this date, use previous value (flat line)
+        fullDateRange.push({
+          date: dateStr,
+          value: prevValue
+        });
+      }
+      
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return fullDateRange;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center mb-6">
@@ -1017,30 +1072,17 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
               {/* Comparison selector */}
               <div className="flex items-center mb-4 gap-2">
                 <span className="text-sm">Compare with:</span>
-                <Select value="" onValueChange={handleComparisonChange}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Select comparison" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {comparisonOptions.map(option => (
-                      <SelectItem
-                        key={option.id}
-                        value={option.id}
-                        disabled={selectedComparisons.includes(option.id)}
-                      >
-                        {option.name}
-                      </SelectItem>
-                    ))}
-                    {user && user.id !== userId && (
-                      <SelectItem
-                        value={`user-${user.id}`}
-                        disabled={selectedComparisons.includes(`user-${user.id}`)}
-                      >
-                        Your Portfolio
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  options={comparisonOptions.map(option => ({
+                    value: option.id,
+                    label: option.name
+                  }))}
+                  value={searchValue}
+                  onSelect={handleComparisonChange}
+                  placeholder="Search users or indices..."
+                  emptyText="No users found"
+                  className="w-[240px]"
+                />
               </div>
               
               {/* Selected comparison indicators */}

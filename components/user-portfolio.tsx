@@ -13,10 +13,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PlusCircle, RefreshCw, Trash2, Edit } from "lucide-react";
+import { PlusCircle, RefreshCw, Trash2, Edit, BarChart2 } from "lucide-react";
 import { AddStockDialog } from "./add-stock-dialog";
 import { EditStockDialog } from "./edit-stock-dialog";
 import { toast } from "@/components/ui/use-toast";
+import { UserProfile } from "./user-profile";
 
 // Types for stock data
 type Stock = {
@@ -51,6 +52,7 @@ export function UserPortfolio() {
   const [editingStock, setEditingStock] = useState<Stock | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingStockId, setDeletingStockId] = useState<number | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
 
   const fetchPortfolio = async (forceRefresh = false) => {
     if (!user) return;
@@ -173,6 +175,22 @@ export function UserPortfolio() {
   const formatPercentage = (value: number) => {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
+
+  // Handle returning from profile view
+  const handleBackFromProfile = () => {
+    setShowProfile(false);
+  };
+
+  // If profile view is shown, render the UserProfile component
+  if (showProfile && user) {
+    return (
+      <UserProfile 
+        userId={user.id} 
+        userName={user.username} 
+        onBack={handleBackFromProfile} 
+      />
+    );
+  }
 
   if (!user) {
     return (
@@ -361,6 +379,19 @@ export function UserPortfolio() {
                   </div>
                 </div>
               )}
+
+              {/* Performance Chart Button */}
+              <div className="flex justify-center my-6">
+                <Button 
+                  onClick={() => setShowProfile(true)}
+                  className="flex items-center gap-2"
+                  variant="outline"
+                  size="lg"
+                >
+                  <BarChart2 className="h-5 w-5" />
+                  View Performance Chart
+                </Button>
+              </div>
 
               {/* Stocks Table */}
               <div className="rounded-md border overflow-hidden">

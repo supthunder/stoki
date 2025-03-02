@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/redis";
+import { getRedisClient } from "@/lib/redis";
 
 export async function GET(request: Request) {
   try {
     // Initialize Redis client
-    const redis = createClient();
+    const redis = await getRedisClient();
+    
+    if (!redis) {
+      return NextResponse.json(
+        { error: "Redis client not available" },
+        { status: 500 }
+      );
+    }
     
     // Get query parameters
     const { searchParams } = new URL(request.url);

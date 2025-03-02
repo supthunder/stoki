@@ -86,6 +86,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const index = searchParams.get('index') || 'sp500';
   const days = parseInt(searchParams.get('days') || '30', 10);
+  const force = searchParams.get('force') === 'true';
   
   // Only allow valid indices
   if (!['sp500', 'nasdaq', 'dow'].includes(index)) {
@@ -99,12 +100,15 @@ export async function GET(request: Request) {
   const cacheKey = `market-index:${index}:${days}`;
   
   try {
-    // Try to get from cache first
-    const cachedData = await getCachedData<PerformanceData[]>(cacheKey);
-    
-    if (cachedData) {
-      console.log(`Using cached market data for ${index} (${days} days)`);
-      return NextResponse.json({ performance: cachedData });
+    // Check if we should use cached data
+    if (!force) {
+      const cachedData = await getCachedData<PerformanceData[]>(cacheKey);
+      if (cachedData) {
+        console.log(`Using cached market data for ${index} (${days} days)`);
+        return NextResponse.json({ performance: cachedData });
+      }
+    } else {
+      console.log(`Force-refreshing market index data for ${index} (${days} days)`);
     }
     
     // Generate fresh mock data
