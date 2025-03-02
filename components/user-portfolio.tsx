@@ -224,10 +224,10 @@ export function UserPortfolio() {
         <TableCell className="text-right">
           <div className="flex flex-col items-end">
             <span className={stock.gain >= 0 ? "text-green-600" : "text-red-600"}>
-              {formatCurrency(stock.gain)}
+              {stock.gain >= 0 ? "↑ " : "↓ "}{formatCurrency(stock.gain)}
             </span>
             <span className={`text-xs ${stock.gainPercentage >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatPercentage(stock.gainPercentage)}
+              {formatPercentage(stock.gainPercentage)}{stock.gainPercentage >= 0 ? " ↗" : " ↘"}
             </span>
           </div>
         </TableCell>
@@ -330,13 +330,13 @@ export function UserPortfolio() {
                   <div className="bg-muted p-3 rounded-md">
                     <div className="text-sm text-muted-foreground">Total Gain/Loss</div>
                     <div className={`text-lg font-semibold ${summary.totalGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatCurrency(summary.totalGain)}
+                      {summary.totalGain >= 0 ? "↑ " : "↓ "}{formatCurrency(summary.totalGain)}
                     </div>
                   </div>
                   <div className="bg-muted p-3 rounded-md">
                     <div className="text-sm text-muted-foreground">Return</div>
                     <div className={`text-lg font-semibold ${summary.totalGainPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatPercentage(summary.totalGainPercentage)}
+                      {formatPercentage(summary.totalGainPercentage)}{summary.totalGainPercentage >= 0 ? " ↗" : " ↘"}
                     </div>
                   </div>
                 </div>
