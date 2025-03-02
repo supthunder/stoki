@@ -8,7 +8,7 @@ import { UserPortfolio } from "@/components/user-portfolio";
 
 export default function Home() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState("portfolio");
+  const [activeTab, setActiveTab] = useState("leaderboard");
 
   return (
     <main className="container mx-auto py-6 px-4 md:px-6">
@@ -21,7 +21,7 @@ export default function Home() {
         </p>
       </div>
 
-      <Tabs defaultValue="portfolio" value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs defaultValue="leaderboard" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="portfolio">Your Portfolio</TabsTrigger>
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
