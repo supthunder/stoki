@@ -90,6 +90,23 @@ export function UserPortfolio() {
     }
   }, [user]);
 
+  // This function refreshes the leaderboard cache to show updated data
+  const refreshLeaderboard = async () => {
+    try {
+      await fetch('/api/leaderboard?refresh=true');
+      console.log('Leaderboard cache refreshed');
+    } catch (error) {
+      console.error('Failed to refresh leaderboard:', error);
+    }
+  };
+
+  // Handle successful stock addition
+  const handleStockAdded = async () => {
+    await fetchPortfolio(true);
+    // Also refresh the leaderboard to show the updated data
+    await refreshLeaderboard();
+  };
+
   // Handle stock deletion
   const deleteStock = async (stockId: number) => {
     if (!user) return;
@@ -125,12 +142,15 @@ export function UserPortfolio() {
         }
       }
       
+      // Also refresh the leaderboard to show the updated data
+      await refreshLeaderboard();
+      
       toast({
-        title: "Stock Removed",
+        title: "Stock deleted",
         description: "The stock has been removed from your portfolio",
       });
-    } catch (err) {
-      console.error("Failed to delete stock:", err);
+    } catch (error) {
+      console.error("Failed to delete stock:", error);
       toast({
         title: "Error",
         description: "Failed to delete the stock. Please try again.",
@@ -379,7 +399,7 @@ export function UserPortfolio() {
       <AddStockDialog 
         open={isAddStockOpen} 
         onOpenChange={setIsAddStockOpen}
-        onStockAdded={fetchPortfolio}
+        onStockAdded={handleStockAdded}
       />
 
       {/* We'll need to create an EditStockDialog component next */}

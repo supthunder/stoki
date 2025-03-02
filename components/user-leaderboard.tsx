@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, MouseEvent } from "react";
 import {
   Table,
   TableBody,
@@ -26,6 +26,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { Button } from "@/components/ui/button";
 
 // Types for user stock data
 type LeaderboardUser = {
@@ -53,12 +54,13 @@ export function UserLeaderboard() {
   const [sortBy, setSortBy] = useState("currentWorth");
   const [sortOrder, setSortOrder] = useState("desc");
 
-  const fetchLeaderboardData = async () => {
+  const fetchLeaderboardData = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/leaderboard');
+      const refreshParam = forceRefresh ? '?refresh=true' : '';
+      const response = await fetch(`/api/leaderboard${refreshParam}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch leaderboard data');
@@ -240,6 +242,11 @@ export function UserLeaderboard() {
     );
   };
 
+  const handleRefresh = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    fetchLeaderboardData(true);
+  };
+
   if (error) {
     return (
       <div className="rounded-md border bg-card text-card-foreground">
@@ -261,6 +268,27 @@ export function UserLeaderboard() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Leaderboard</h2>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={(e) => {
+              e.preventDefault();
+              fetchLeaderboardData(true);
+            }}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <span className="animate-spin mr-2">⟳</span>
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <span className="mr-2">⟳</span>
+                Refresh
+              </>
+            )}
+          </Button>
           <Tabs defaultValue="table" onValueChange={setViewMode}>
             <TabsList>
               <TabsTrigger value="table">Table</TabsTrigger>

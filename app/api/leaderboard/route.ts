@@ -22,14 +22,23 @@ interface StockType {
   purchaseDate: string;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Check if we should bypass the cache for fresh data
+    const { searchParams } = new URL(request.url);
+    const forceRefresh = searchParams.get('refresh') === 'true';
+    
     // Try to get cached leaderboard data first (short TTL to ensure fresh data)
-    const cachedLeaderboard = await getCachedData<any[]>('leaderboard:data');
-    if (cachedLeaderboard) {
-      console.log('Returning cached leaderboard data');
-      return NextResponse.json(cachedLeaderboard);
+    if (!forceRefresh) {
+      const cachedLeaderboard = await getCachedData<any[]>('leaderboard:data');
+      if (cachedLeaderboard) {
+        console.log('Returning cached leaderboard data');
+        return NextResponse.json(cachedLeaderboard);
+      }
     }
+
+    // If forceRefresh is true, we'll skip the cache and fetch fresh data
+    console.log(forceRefresh ? 'Force refreshing leaderboard data' : 'Fetching fresh leaderboard data');
 
     const sql = createSqlClient();
     const today = new Date();
