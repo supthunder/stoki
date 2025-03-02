@@ -217,6 +217,14 @@ export async function GET() {
       // Add today's data point to chart
       chartData.push({ date: todayStr, value: currentWorth });
       
+      // Format stock distribution data for pie chart
+      const stockDistribution = stocksWithCurrentPrices.map((stock: Record<string, any>) => {
+        return {
+          name: stock.symbol,
+          value: stock.currentPrice * stock.quantity,
+        };
+      });
+      
       return {
         id: user.id,
         name: user.username,
@@ -229,7 +237,8 @@ export async function GET() {
         topGainer,
         topGainerPercentage: topGainerPercentage.toFixed(2),
         currentWorth: formatCurrency(currentWorth),
-        chartData
+        chartData,
+        stockDistribution
       };
     }));
 

@@ -15,6 +15,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseCurrency } from "@/lib/utils";
+import {
+  Area,
+  AreaChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 // Types for user stock data
 type LeaderboardUser = {
@@ -27,8 +38,10 @@ type LeaderboardUser = {
   weeklyGain: string;
   weeklyGainPercentage: string;
   topGainer: string | null;
+  topGainerPercentage?: string;
   currentWorth: string;
   chartData?: { date: string; value: number }[];
+  stockDistribution?: { name: string, value: number }[];
 };
 
 export function UserLeaderboard() {
@@ -114,33 +127,115 @@ export function UserLeaderboard() {
     return sortOrder === "desc" ? bValue - aValue : aValue - bValue;
   });
 
-  // Simple mini chart component
+  // Simple mini chart component - Replacing with Shadcn UI charts
   const MiniChart = ({ data }: { data?: { date: string; value: number }[] }) => {
     if (!data || data.length < 2) return null;
-    
-    const max = Math.max(...data.map(d => d.value));
-    const min = Math.min(...data.map(d => d.value));
-    const range = max - min;
     
     // Calculate if overall trend is positive
     const isPositive = data[data.length - 1].value >= data[0].value;
     
     return (
-      <div className="h-10 w-16 flex items-end gap-[1px]">
-        {data.map((point, i) => {
-          const height = range === 0 ? 50 : ((point.value - min) / range) * 100;
-          return (
-            <div 
-              key={i} 
-              className={`w-1 ${isPositive ? 'bg-green-500' : 'bg-red-500'}`} 
-              style={{ height: `${Math.max(10, height)}%` }}
-              title={`${point.date}: ${point.value.toLocaleString('en-US', {
-                style: 'currency',
-                currency: 'USD'
-              })}`}
+      <div className="h-14 w-32">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="5%"
+                  stopColor={isPositive ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"}
+                  stopOpacity={0.3}
+                />
+                <stop
+                  offset="95%"
+                  stopColor={isPositive ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"}
+                  stopOpacity={0}
+                />
+              </linearGradient>
+            </defs>
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  return (
+                    <div className="rounded-lg border bg-background p-2 shadow-sm">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-medium">Date</span>
+                          <span className="font-bold">
+                            {payload[0]?.payload?.date || ""}
+                          </span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-xs font-medium">Value</span>
+                          <span className="font-bold">
+                            ${payload[0]?.value?.toLocaleString() || "0"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }}
             />
-          );
-        })}
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={isPositive ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"}
+              fillOpacity={1}
+              fill="url(#chartGradient)"
+              strokeWidth={2}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
+  // Stock Distribution Pie Chart
+  const StockDistributionChart = ({ data }: { data?: { name: string, value: number }[] }) => {
+    if (!data || data.length === 0) return null;
+    
+    // Generate colors for each segment
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+    
+    return (
+      <div className="h-14 w-32">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={15}
+              outerRadius={25}
+              paddingAngle={2}
+              dataKey="value"
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  return (
+                    <div className="rounded-lg border bg-background p-2 shadow-sm">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-medium">
+                          {payload[0]?.name || ""}
+                        </span>
+                        <span className="font-bold">
+                          ${payload[0]?.value?.toLocaleString() || "0"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
     );
   };
@@ -192,6 +287,7 @@ export function UserLeaderboard() {
                   Total Gain {sortBy === "totalGain" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
                 <TableHead>Trend</TableHead>
+                <TableHead>Holdings</TableHead>
                 <TableHead className="text-right cursor-pointer" onClick={() => handleSort("currentWorth")}>
                   Net Worth {sortBy === "currentWorth" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
@@ -208,12 +304,13 @@ export function UserLeaderboard() {
                     <TableCell><Skeleton className="h-8 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-8 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-10 w-16" /></TableCell>
+                    <TableCell><Skeleton className="h-10 w-16" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : sortedUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
                     No users found. Be the first to add stocks to your portfolio!
                   </TableCell>
                 </TableRow>
@@ -221,7 +318,16 @@ export function UserLeaderboard() {
                 sortedUsers.map((user, index) => (
                   <TableRow key={user.id} className={highlightCurrentUser(user.id)}>
                     <TableCell className="font-medium">{index + 1}</TableCell>
-                    <TableCell>{user.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {user.name}
+                      {user.topGainer && (
+                        <div className="mt-1">
+                          <Badge variant="outline" className="text-xs">
+                            Top: {user.topGainer} ({user.topGainerPercentage}%)
+                          </Badge>
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
                         <span
@@ -288,6 +394,9 @@ export function UserLeaderboard() {
                     <TableCell>
                       <MiniChart data={user.chartData} />
                     </TableCell>
+                    <TableCell>
+                      <StockDistributionChart data={user.stockDistribution} />
+                    </TableCell>
                     <TableCell className="text-right font-medium">
                       {user.currentWorth}
                     </TableCell>
@@ -298,97 +407,129 @@ export function UserLeaderboard() {
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {loading ? (
-            // Loading skeletons for cards
-            Array(6).fill(0).map((_, index) => (
-              <Card key={`skeleton-card-${index}`} className="overflow-hidden">
-                <CardContent className="p-4">
-                  <Skeleton className="h-6 w-2/3 mb-4" />
-                  <div className="flex justify-between mb-2">
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-4 w-1/4" />
+            // Card loading skeletons
+            Array(4).fill(0).map((_, index) => (
+              <Card key={`skeleton-card-${index}`} className="mb-4">
+                <CardContent className="pt-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center">
+                      <Skeleton className="w-8 h-8 rounded-full mr-2" />
+                      <Skeleton className="h-6 w-24" />
+                    </div>
+                    <Skeleton className="h-6 w-20" />
                   </div>
-                  <div className="flex justify-between mb-2">
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-4 w-1/4" />
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="space-y-4">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                    </div>
+                    <div className="flex flex-col space-y-2">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-14 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-14 w-full" />
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-4 w-1/4" />
-                  </div>
-                  <Skeleton className="h-10 w-full mt-4" />
                 </CardContent>
               </Card>
             ))
           ) : sortedUsers.length === 0 ? (
-            <div className="col-span-full text-center py-6 text-muted-foreground">
-              No users found. Be the first to add stocks to your portfolio!
-            </div>
+            <Card className="col-span-2">
+              <CardContent className="py-6 text-center text-muted-foreground">
+                No users found. Be the first to add stocks to your portfolio!
+              </CardContent>
+            </Card>
           ) : (
             sortedUsers.map((user, index) => (
               <Card 
                 key={user.id} 
-                className={`overflow-hidden ${highlightCurrentUser(user.id)}`}
+                className={`mb-4 ${highlightCurrentUser(user.id)}`}
               >
-                <CardContent className="p-4">
+                <CardContent className="pt-6">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-lg">{index + 1}. {user.name}</h3>
-                    <span className="font-medium">{user.currentWorth}</span>
+                    <div className="flex items-center">
+                      <div className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center mr-2">
+                        {index + 1}
+                      </div>
+                      <h3 className="font-semibold text-lg">{user.name}</h3>
+                    </div>
+                    <span className="font-bold">{user.currentWorth}</span>
                   </div>
                   
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Daily:</span>
-                      <div className="flex items-center gap-2">
-                        <span 
-                          className={parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"}
-                        >
-                          {user.dailyGain}
-                        </span>
-                        <span 
-                          className={`text-xs ${parseFloat(user.dailyGainPercentage) >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                          ({parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}{user.dailyGainPercentage}%)
-                        </span>
+                  {user.topGainer && (
+                    <div className="mb-4">
+                      <Badge variant="outline" className="w-full justify-center">
+                        Top Performer: {user.topGainer} ({user.topGainerPercentage}%)
+                      </Badge>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Daily:</span>
+                        <div className="flex items-center gap-2">
+                          <span 
+                            className={parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"}
+                          >
+                            {user.dailyGain}
+                          </span>
+                          <span 
+                            className={`text-xs ${parseFloat(user.dailyGainPercentage) >= 0 ? "text-green-600" : "text-red-600"}`}
+                          >
+                            ({parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}{user.dailyGainPercentage}%)
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">7-Day:</span>
+                        <div className="flex items-center gap-2">
+                          <span 
+                            className={parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"}
+                          >
+                            {user.weeklyGain}
+                          </span>
+                          <span 
+                            className={`text-xs ${parseFloat(user.weeklyGainPercentage) >= 0 ? "text-green-600" : "text-red-600"}`}
+                          >
+                            ({parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}{user.weeklyGainPercentage}%)
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Total:</span>
+                        <div className="flex items-center gap-2">
+                          <span 
+                            className={parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"}
+                          >
+                            {user.totalGain}
+                          </span>
+                          <span 
+                            className={`text-xs ${parseFloat(user.totalGainPercentage) >= 0 ? "text-green-600" : "text-red-600"}`}
+                          >
+                            ({parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}{user.totalGainPercentage}%)
+                          </span>
+                        </div>
                       </div>
                     </div>
                     
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">7-Day:</span>
-                      <div className="flex items-center gap-2">
-                        <span 
-                          className={parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"}
-                        >
-                          {user.weeklyGain}
-                        </span>
-                        <span 
-                          className={`text-xs ${parseFloat(user.weeklyGainPercentage) >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                          ({parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}{user.weeklyGainPercentage}%)
-                        </span>
+                    <div className="flex flex-col space-y-2">
+                      <div className="text-sm text-muted-foreground text-center">Portfolio Trend</div>
+                      <div className="flex justify-center">
+                        <MiniChart data={user.chartData} />
+                      </div>
+
+                      <div className="text-sm text-muted-foreground text-center mt-2">Stock Holdings</div>
+                      <div className="flex justify-center">
+                        <StockDistributionChart data={user.stockDistribution} />
                       </div>
                     </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Total:</span>
-                      <div className="flex items-center gap-2">
-                        <span 
-                          className={parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"}
-                        >
-                          {user.totalGain}
-                        </span>
-                        <span 
-                          className={`text-xs ${parseFloat(user.totalGainPercentage) >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                          ({parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}{user.totalGainPercentage}%)
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 flex justify-center">
-                    <MiniChart data={user.chartData} />
                   </div>
                 </CardContent>
               </Card>
