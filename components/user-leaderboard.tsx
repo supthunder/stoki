@@ -24,77 +24,25 @@ type LeaderboardUser = {
   currentWorth: number;
 };
 
-// Mock data for demo purposes
-const mockUsers: LeaderboardUser[] = [
-  {
-    id: 1,
-    name: "Alice Johnson",
-    totalGain: 12450.75,
-    totalGainPercentage: 24.5,
-    topGainer: "AAPL",
-    topGainerPercentage: 12.3,
-    currentWorth: 65450.25,
-  },
-  {
-    id: 2,
-    name: "Bob Smith",
-    totalGain: 8923.50,
-    totalGainPercentage: 18.2,
-    topGainer: "MSFT",
-    topGainerPercentage: 9.7,
-    currentWorth: 58200.75,
-  },
-  {
-    id: 3,
-    name: "Carol Williams",
-    totalGain: 15678.30,
-    totalGainPercentage: 32.1,
-    topGainer: "TSLA",
-    topGainerPercentage: 28.5,
-    currentWorth: 72300.45,
-  },
-  {
-    id: 4,
-    name: "David Brown",
-    totalGain: -2350.25,
-    totalGainPercentage: -5.8,
-    topGainer: "NVDA",
-    topGainerPercentage: 6.2,
-    currentWorth: 38750.50,
-  },
-  {
-    id: 5,
-    name: "Eva Martinez",
-    totalGain: 6740.80,
-    totalGainPercentage: 14.2,
-    topGainer: "AMZN",
-    topGainerPercentage: 8.9,
-    currentWorth: 51230.35,
-  },
-];
-
 export function UserLeaderboard() {
   const { user } = useAuth();
   const [users, setUsers] = useState<LeaderboardUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // In a real implementation, this would fetch from your API
   const fetchLeaderboardData = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await fetch('/api/leaderboard');
       
-      // For now, use mock data
-      // In production, you would fetch from your database
-      // const response = await fetch('/api/leaderboard');
-      // const data = await response.json();
-      // setUsers(data);
+      if (!response.ok) {
+        throw new Error('Failed to fetch leaderboard data');
+      }
       
-      setUsers(mockUsers);
+      const data = await response.json();
+      setUsers(data);
     } catch (err) {
       console.error("Failed to fetch leaderboard data:", err);
       setError("Failed to load leaderboard data");
@@ -155,6 +103,12 @@ export function UserLeaderboard() {
                 <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
               </TableRow>
             ))
+          ) : users.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                No users found. Be the first to add stocks to your portfolio!
+              </TableCell>
+            </TableRow>
           ) : (
             users
               .sort((a, b) => b.totalGain - a.totalGain)
@@ -169,7 +123,7 @@ export function UserLeaderboard() {
                           user.totalGain >= 0 ? "text-green-600" : "text-red-600"
                         }
                       >
-                        ${user.totalGain.toLocaleString()}
+                        ${user.totalGain.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       <span
                         className={`text-xs ${
@@ -179,27 +133,31 @@ export function UserLeaderboard() {
                         }`}
                       >
                         {user.totalGainPercentage >= 0 ? "+" : ""}
-                        {user.totalGainPercentage}%
+                        {user.totalGainPercentage.toFixed(2)}%
                       </span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{user.topGainer}</Badge>
-                      <span
-                        className={`text-xs ${
-                          user.topGainerPercentage >= 0
-                            ? "text-green-600"
-                            : "text-red-600"
-                        }`}
-                      >
-                        {user.topGainerPercentage >= 0 ? "+" : ""}
-                        {user.topGainerPercentage}%
-                      </span>
-                    </div>
+                    {user.topGainer ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{user.topGainer}</Badge>
+                        <span
+                          className={`text-xs ${
+                            user.topGainerPercentage >= 0
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {user.topGainerPercentage >= 0 ? "+" : ""}
+                          {user.topGainerPercentage.toFixed(2)}%
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">None</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
-                    ${user.currentWorth.toLocaleString()}
+                    ${user.currentWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                 </TableRow>
               ))

@@ -22,7 +22,7 @@ const getDatabaseUrl = () => {
 };
 
 // Create a SQL function that connects to the database
-const createSqlClient = () => {
+export const createSqlClient = () => {
   const url = getDatabaseUrl();
   
   if (!url) {
@@ -81,18 +81,15 @@ export async function addStockToUser(
   symbol: string,
   companyName: string,
   quantity: number,
-  purchasePrice: number
+  purchasePrice: number,
+  purchaseDate: string = new Date().toISOString().split('T')[0]
 ) {
   try {
     const sql = createSqlClient();
     const result = await sql`
-      INSERT INTO user_stocks (user_id, symbol, company_name, quantity, purchase_price)
-      VALUES (${userId}, ${symbol}, ${companyName}, ${quantity}, ${purchasePrice})
-      ON CONFLICT (user_id, symbol) 
-      DO UPDATE SET 
-        quantity = user_stocks.quantity + ${quantity},
-        purchase_price = (user_stocks.purchase_price * user_stocks.quantity + ${purchasePrice} * ${quantity}) / (user_stocks.quantity + ${quantity})
-      RETURNING id, symbol, company_name, quantity, purchase_price
+      INSERT INTO user_stocks (user_id, symbol, company_name, quantity, purchase_price, purchase_date)
+      VALUES (${userId}, ${symbol}, ${companyName}, ${quantity}, ${purchasePrice}, ${purchaseDate})
+      RETURNING id, symbol, company_name, quantity, purchase_price, purchase_date
     `;
     return result[0];
   } catch (error) {
@@ -138,6 +135,105 @@ export async function updateStockQuantity(
     }
   } catch (error) {
     console.error('Failed to update stock quantity:', error);
+    throw error;
+  }
+}
+
+// Function to get all users with their stocks for the leaderboard
+export async function getLeaderboardData() {
+  try {
+    const sql = createSqlClient();
+    
+    // Get all users who have at least one stock
+    const usersWithStocks = await sql`
+      SELECT DISTINCT u.id, u.username 
+      FROM users u
+      JOIN user_stocks s ON u.id = s.user_id
+    `;
+    
+    if (usersWithStocks.length === 0) {
+      return [];
+    }
+    
+    // For each user, get their stocks and calculate totals
+    const leaderboardData = await Promise.all(
+      usersWithStocks.map(async (user) => {
+        const stocks = await sql`
+          SELECT symbol, company_name, quantity, purchase_price, purchase_date
+          FROM user_stocks
+          WHERE user_id = ${user.id}
+        `;
+        
+        // Calculate user's portfolio metrics
+        let totalInvestment = 0;
+        let topGainer = { symbol: '', gainPercentage: -Infinity };
+        
+        // Process each stock
+        const stocksWithCurrentPrice = await Promise.all(
+          stocks.map(async (stock) => {
+            // In a real app, we would fetch current prices from an API
+            // For this demo, we'll use our local price API
+            const response = await fetch(
+              `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/stocks/price?symbol=${stock.symbol}`,
+              { cache: 'no-store' }
+            );
+            
+            const priceData = await response.json();
+            const currentPrice = priceData.price;
+            
+            // Calculate values
+            const totalValue = currentPrice * stock.quantity;
+            const invested = stock.purchase_price * stock.quantity;
+            const gainLoss = totalValue - invested;
+            const gainPercentage = ((currentPrice - stock.purchase_price) / stock.purchase_price) * 100;
+            
+            totalInvestment += invested;
+            
+            // Check if this is the top gainer
+            if (gainPercentage > topGainer.gainPercentage) {
+              topGainer = { 
+                symbol: stock.symbol, 
+                gainPercentage 
+              };
+            }
+            
+            return {
+              ...stock,
+              currentPrice,
+              totalValue,
+              gainLoss,
+              gainPercentage
+            };
+          })
+        );
+        
+        // Calculate totals
+        const currentWorth = stocksWithCurrentPrice.reduce(
+          (sum, stock) => sum + stock.totalValue, 0
+        );
+        
+        const totalGain = currentWorth - totalInvestment;
+        const totalGainPercentage = totalInvestment > 0 
+          ? (totalGain / totalInvestment) * 100 
+          : 0;
+        
+        return {
+          id: user.id,
+          name: user.username,
+          totalGain,
+          totalGainPercentage,
+          topGainer: topGainer.symbol,
+          topGainerPercentage: topGainer.gainPercentage,
+          currentWorth,
+          stocks: stocksWithCurrentPrice
+        };
+      })
+    );
+    
+    // Sort by total gain in descending order
+    return leaderboardData.sort((a, b) => b.totalGain - a.totalGain);
+  } catch (error) {
+    console.error('Failed to get leaderboard data:', error);
     throw error;
   }
 } 

@@ -1,42 +1,36 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserLeaderboard } from "@/components/user-leaderboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UserLeaderboard } from "@/components/user-leaderboard";
+import { UserPortfolio } from "@/components/user-portfolio";
 
 export default function Home() {
   const { user } = useAuth();
-  
+  const [activeTab, setActiveTab] = useState("portfolio");
+
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="mb-8 text-center">
-        <h1 className="text-4xl font-bold mb-2">Welcome to Stoki</h1>
-        <p className="text-xl opacity-80">
-          {user ? `Logged in as ${user.username}` : "A social stock trading app"}
+    <main className="container mx-auto py-6 px-4 md:px-6">
+      <div className="flex flex-col items-center justify-center mb-8">
+        <h1 className="text-3xl font-bold tracking-tight">Welcome to Stoki</h1>
+        <p className="text-muted-foreground mt-2">
+          {user
+            ? `Hello, ${user.username}! Track your stocks and compete with others.`
+            : "Log in to track your stocks and compete with others."}
         </p>
       </div>
 
-      <Tabs defaultValue="leaderboard" className="mb-8">
+      <Tabs defaultValue="portfolio" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           <TabsTrigger value="portfolio">Your Portfolio</TabsTrigger>
+          <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
         </TabsList>
-        
+        <TabsContent value="portfolio" className="pt-4">
+          <UserPortfolio />
+        </TabsContent>
         <TabsContent value="leaderboard" className="pt-4">
           <UserLeaderboard />
-        </TabsContent>
-        
-        <TabsContent value="portfolio" className="p-4">
-          {user ? (
-            <div>
-              <h2 className="text-2xl font-bold mb-4">Your Portfolio</h2>
-              <p>Coming soon: View your stock portfolio here</p>
-            </div>
-          ) : (
-            <div className="p-4 border rounded-md bg-yellow-50 dark:bg-yellow-950 text-center">
-              <p>Please log in to view your portfolio</p>
-            </div>
-          )}
         </TabsContent>
       </Tabs>
     </main>
