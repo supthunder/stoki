@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import Cookies from "js-cookie";
-import { createUser, getUserByUsername } from "@/lib/db";
 
 // Define user type
 export type User = {
@@ -37,10 +36,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userCookie = Cookies.get(USER_COOKIE);
         if (userCookie) {
           const userData = JSON.parse(userCookie);
-          // Verify user exists in database
-          const dbUser = await getUserByUsername(userData.username);
-          if (dbUser) {
-            setUser(dbUser as User);
+          // Verify user exists in database via API
+          const response = await fetch('/api/auth/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username: userData.username })
+          });
+          
+          const data = await response.json();
+          
+          if (data.success && data.user) {
+            setUser(data.user);
           } else {
             // User doesn't exist in the database, clear cookie
             Cookies.remove(USER_COOKIE);
@@ -62,14 +70,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (username: string) => {
     try {
       setLoading(true);
-      // Create or get existing user
-      const newUser = await createUser(username);
+      
+      // Create or get existing user via API
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
       
       // Set user in state
-      setUser(newUser as User);
+      setUser(data.user);
       
       // Save user in cookie (30 days)
-      Cookies.set(USER_COOKIE, JSON.stringify(newUser), { 
+      Cookies.set(USER_COOKIE, JSON.stringify(data.user), { 
         expires: COOKIE_EXPIRATION,
         sameSite: 'strict'
       });

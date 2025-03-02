@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { UserLeaderboard } from "@/components/user-leaderboard";
+import { SetupGuide } from "@/components/setup-guide";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
   const { user } = useAuth();
@@ -44,10 +46,20 @@ export default function Home() {
           </div>
         )}
 
-        {/* Single leaderboard layout */}
-        <div className="w-full">
-          <UserLeaderboard />
-        </div>
+        <Tabs defaultValue="app" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="app">App</TabsTrigger>
+            <TabsTrigger value="setup">Setup & Troubleshooting</TabsTrigger>
+          </TabsList>
+          <TabsContent value="app">
+            <div className="w-full">
+              <UserLeaderboard />
+            </div>
+          </TabsContent>
+          <TabsContent value="setup">
+            <SetupGuide />
+          </TabsContent>
+        </Tabs>
       </div>
     </main>
   );

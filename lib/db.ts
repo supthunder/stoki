@@ -1,7 +1,23 @@
 import { createClient } from '@vercel/postgres';
 
-// Create a client with connection pooling
-const db = createClient();
+// Get connection string from environment variables - try all possible environment variable names
+const connectionString = 
+  process.env.POSTGRES_URL_NON_POOLING || 
+  process.env.POSTGRES_URL || 
+  process.env.DATABASE_URL;
+
+// Log connection status for debugging (without exposing sensitive details)
+if (!connectionString) {
+  console.error('Database connection string missing. Please check your environment variables.');
+  console.error('Required environment variables: POSTGRES_URL_NON_POOLING, POSTGRES_URL, or DATABASE_URL');
+} else {
+  console.log('Database connection string found.');
+}
+
+// For serverless environments, specify both pooling and non-pooling options
+const db = createClient({
+  connectionString
+});
 
 // Initialize the database by creating tables if they don't exist
 export async function initializeDb() {
@@ -30,13 +46,16 @@ export async function initializeDb() {
     `;
 
     console.log('Database initialized successfully');
+    return true;
   } catch (error) {
     console.error('Failed to initialize database:', error);
     throw error;
   }
 }
 
-// User functions
+// User functions - only used server-side in API routes
+// These should never be directly imported in client components
+
 export async function createUser(username: string) {
   try {
     const result = await db.sql`
