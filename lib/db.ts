@@ -139,6 +139,50 @@ export async function updateStockQuantity(
   }
 }
 
+// Add this function after the updateStockQuantity function
+export async function updateStock(
+  stockId: number,
+  userId: number,
+  quantity: number,
+  purchasePrice: number,
+  purchaseDate: string
+) {
+  try {
+    const sql = createSqlClient();
+    
+    // First, check if the stock belongs to the specified user
+    const stockCheck = await sql`
+      SELECT id FROM user_stocks 
+      WHERE id = ${stockId} AND user_id = ${userId}
+    `;
+    
+    if (stockCheck.length === 0) {
+      // Stock not found or doesn't belong to user
+      return null;
+    }
+    
+    if (quantity <= 0) {
+      // Delete the stock if quantity is 0 or negative
+      await sql`DELETE FROM user_stocks WHERE id = ${stockId}`;
+      return null;
+    } else {
+      const result = await sql`
+        UPDATE user_stocks
+        SET 
+          quantity = ${quantity}, 
+          purchase_price = ${purchasePrice}, 
+          purchase_date = ${purchaseDate}
+        WHERE id = ${stockId}
+        RETURNING id, symbol, company_name, quantity, purchase_price, purchase_date
+      `;
+      return result[0];
+    }
+  } catch (error) {
+    console.error('Failed to update stock:', error);
+    throw error;
+  }
+}
+
 // Function to get all users with their stocks for the leaderboard
 export async function getLeaderboardData() {
   try {
