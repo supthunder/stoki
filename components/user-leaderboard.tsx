@@ -29,6 +29,59 @@ import {
 import { Button } from "@/components/ui/button";
 import { UserProfile } from "@/components/user-profile";
 
+// Medal component for top 3 rankings
+const RankMedal = ({ rank }: { rank: number }) => {
+  if (rank === 1) {
+    return (
+      <div className="bg-yellow-400 text-yellow-950 w-12 h-12 rounded-full flex items-center justify-center" title="Gold Medal">
+        <span className="text-2xl">🥇</span>
+      </div>
+    );
+  } else if (rank === 2) {
+    return (
+      <div className="bg-gray-300 text-gray-800 w-12 h-12 rounded-full flex items-center justify-center" title="Silver Medal">
+        <span className="text-2xl">🥈</span>
+      </div>
+    );
+  } else if (rank === 3) {
+    return (
+      <div className="bg-amber-700 text-amber-100 w-12 h-12 rounded-full flex items-center justify-center" title="Bronze Medal">
+        <span className="text-2xl">🥉</span>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center">
+      <span className="text-base font-bold">{rank}</span>
+    </div>
+  );
+};
+
+// Stock logo component to handle fallbacks
+const StockLogo = ({ symbol }: { symbol: string }) => {
+  const [imageError, setImageError] = useState(false);
+
+  // If we've already had an error, use the fallback immediately
+  if (imageError) {
+    return (
+      <div className="w-4 h-4 bg-primary/20 rounded-sm flex items-center justify-center text-[8px] font-bold">
+        {symbol.substring(0, 2)}
+      </div>
+    );
+  }
+
+  // Try to load the image first
+  return (
+    <img 
+      src={`https://storage.googleapis.com/iex/api/logos/${symbol}.png`}
+      alt={symbol}
+      className="w-4 h-4 object-contain rounded-sm"
+      onError={() => setImageError(true)}
+    />
+  );
+};
+
 // Types for user stock data
 type LeaderboardUser = {
   id: number;
@@ -42,6 +95,12 @@ type LeaderboardUser = {
   topGainer: string | null;
   topGainerPercentage?: string;
   currentWorth: string;
+  startingAmount: string;
+  latestPurchase?: {
+    symbol: string;
+    date: string;
+    price: number;
+  }
   chartData?: { date: string; value: number }[];
   stockDistribution?: { name: string, value: number }[];
 };
@@ -55,6 +114,7 @@ export function UserLeaderboard() {
   const [sortBy, setSortBy] = useState("currentWorth");
   const [sortOrder, setSortOrder] = useState("desc");
   const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchLeaderboardData = async (forceRefresh = false) => {
     try {
@@ -70,6 +130,7 @@ export function UserLeaderboard() {
       
       const data = await response.json();
       setUsers(data);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error("Failed to fetch leaderboard data:", err);
       setError("Failed to load leaderboard data");
@@ -78,9 +139,24 @@ export function UserLeaderboard() {
     }
   };
 
+  // Initial data fetch on component mount
   useEffect(() => {
-    fetchLeaderboardData();
+    // Always force refresh on initial load to get the latest data
+    fetchLeaderboardData(true);
   }, []);
+  
+  // Set up auto-refresh interval (every 2 minutes)
+  useEffect(() => {
+    // Don't set up auto-refresh if user is looking at a profile
+    if (selectedUser) return;
+    
+    const intervalId = setInterval(() => {
+      fetchLeaderboardData(true);
+    }, 2 * 60 * 1000); // 2 minutes in milliseconds
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
+  }, [selectedUser]);
 
   // Highlight the current user in the leaderboard
   const highlightCurrentUser = (userId: number) => {
@@ -121,6 +197,10 @@ export function UserLeaderboard() {
       case "weeklyGain":
         aValue = parseCurrency(a.weeklyGain);
         bValue = parseCurrency(b.weeklyGain);
+        break;
+      case "startingAmount":
+        aValue = parseCurrency(a.startingAmount);
+        bValue = parseCurrency(b.startingAmount);
         break;
       default:
         aValue = parseCurrency(a.currentWorth);
@@ -288,6 +368,13 @@ export function UserLeaderboard() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Leaderboard</h2>
         <div className="flex items-center gap-2">
+          <div className="text-xs text-muted-foreground mr-2">
+            {lastUpdated ? (
+              <>Last updated: {lastUpdated.toLocaleTimeString()}</>
+            ) : (
+              <>Updating...</>
+            )}
+          </div>
           <Button 
             variant="outline" 
             size="sm" 
@@ -320,7 +407,7 @@ export function UserLeaderboard() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[60px]">Rank</TableHead>
+                <TableHead className="w-[80px]">Rank</TableHead>
                 <TableHead>User</TableHead>
                 <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
                   Daily {sortBy === "dailyGain" && (sortOrder === "desc" ? "↓" : "↑")}
@@ -332,7 +419,10 @@ export function UserLeaderboard() {
                   Total Gain {sortBy === "totalGain" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
                 <TableHead className="hidden md:table-cell">Trend</TableHead>
-                <TableHead className="hidden md:table-cell">Holdings</TableHead>
+                <TableHead className="hidden md:table-cell whitespace-nowrap">Latest Purchase</TableHead>
+                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("startingAmount")}>
+                  Initial Investment {sortBy === "startingAmount" && (sortOrder === "desc" ? "↓" : "↑")}
+                </TableHead>
                 <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
                   Net Worth {sortBy === "currentWorth" && (sortOrder === "desc" ? "↓" : "↑")}
                 </TableHead>
@@ -350,6 +440,7 @@ export function UserLeaderboard() {
                     <TableCell><Skeleton className="h-8 w-20" /></TableCell>
                     <TableCell className="hidden md:table-cell"><Skeleton className="h-10 w-16" /></TableCell>
                     <TableCell className="hidden md:table-cell"><Skeleton className="h-10 w-16" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                   </TableRow>
                 ))
@@ -366,7 +457,13 @@ export function UserLeaderboard() {
                     className={`${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/50`}
                     onClick={() => handleUserClick(user)}
                   >
-                    <TableCell className="font-medium">{index + 1}</TableCell>
+                    <TableCell className="font-medium">
+                      {index < 3 ? (
+                        <RankMedal rank={index + 1} />
+                      ) : (
+                        index + 1
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium max-w-[120px] md:max-w-none">
                       <div className="truncate">
                         {user.name}
@@ -446,7 +543,22 @@ export function UserLeaderboard() {
                       <MiniChart data={user.chartData} />
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <StockDistributionChart data={user.stockDistribution} />
+                      {user.latestPurchase ? (
+                        <div className="flex flex-col">
+                          <div className="flex items-center space-x-1">
+                            <span className="font-semibold">{user.latestPurchase.symbol}</span>
+                            <StockLogo symbol={user.latestPurchase.symbol} />
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(user.latestPurchase.date).toLocaleDateString()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No purchases</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      {user.startingAmount}
                     </TableCell>
                     <TableCell className="text-right font-medium whitespace-nowrap">
                       {user.currentWorth}
@@ -504,12 +616,17 @@ export function UserLeaderboard() {
                 <CardContent className="pt-6">
                   <div className="flex justify-between items-center mb-4">
                     <div className="flex items-center">
-                      <div className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center mr-2">
-                        {index + 1}
+                      <div className="mr-2">
+                        <RankMedal rank={index + 1} />
                       </div>
                       <h3 className="font-semibold text-lg">{user.name}</h3>
                     </div>
-                    <span className="font-bold">{user.currentWorth}</span>
+                    <div className="text-right">
+                      <div className="font-bold">{user.currentWorth}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Initial: {user.startingAmount}
+                      </div>
+                    </div>
                   </div>
                   
                   {user.topGainer && (
@@ -577,12 +694,25 @@ export function UserLeaderboard() {
                         <MiniChart data={user.chartData} />
                       </div>
 
-                      <div className="text-sm text-muted-foreground text-center mt-2">Stock Holdings</div>
+                      <div className="text-sm text-muted-foreground text-center mt-2">Holdings Distribution</div>
                       <div className="flex justify-center">
                         <StockDistributionChart data={user.stockDistribution} />
                       </div>
                     </div>
                   </div>
+                  
+                  {user.latestPurchase && (
+                    <div className="flex justify-between items-center text-sm border-t pt-2">
+                      <span className="text-muted-foreground">Latest Purchase:</span>
+                      <div className="flex items-center gap-1">
+                        <StockLogo symbol={user.latestPurchase.symbol} />
+                        <span className="font-medium">{user.latestPurchase.symbol}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({new Date(user.latestPurchase.date).toLocaleDateString()})
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))

@@ -22,6 +22,121 @@ interface StockType {
   purchaseDate: string;
 }
 
+// Enhanced StockType with gains and current values
+interface EnhancedStockType extends StockType {
+  currentPrice: number;
+  currentValue: number;
+  historicalPrice: number;
+  purchaseValue: number;
+  gain?: number;
+  gainPercentage?: number;
+}
+
+// Helper function to check if a date is in the future
+const isDateInFuture = (dateString: string): boolean => {
+  const date = new Date(dateString);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Compare dates only
+  return date > today;
+};
+
+// Get historical prices for each stock based on purchase date
+const getHistoricalPrice = async (symbol: string, purchaseDate: string, forceRefresh = false): Promise<number | null> => {
+  // If the purchase date is in the future, we can't get historical data
+  if (isDateInFuture(purchaseDate)) {
+    console.log(`Cannot get historical price for ${symbol} as date ${purchaseDate} is in the future`);
+    return null;
+  }
+  
+  // Create a cache key for this historical price
+  const historicalCacheKey = `yahoo:historical:${symbol}:${purchaseDate}`;
+  
+  // Try to get from cache first
+  const cachedPrice = await getCachedData<number>(historicalCacheKey);
+  if (cachedPrice !== null && !forceRefresh) {
+    console.log(`Using cached historical price for ${symbol} on ${purchaseDate}: ${cachedPrice}`);
+    return cachedPrice;
+  }
+  
+  // For recently purchased stocks, especially if purchased today,
+  // we should just use the recorded purchase price as it's likely accurate
+  const purchaseTime = new Date(purchaseDate).getTime();
+  const now = new Date().getTime();
+  
+  if (now - purchaseTime < ONE_DAY_MS) {
+    console.log(`Stock ${symbol} was purchased recently (${purchaseDate}), using recorded purchase price`);
+    return null;  // Fall back to recorded purchase price
+  }
+  
+  try {
+    // For stocks that we know might cause issues, just use the recorded purchase price
+    const problematicSymbols = ['TEM']; // Add any other symbols that cause issues
+    if (problematicSymbols.includes(symbol)) {
+      console.log(`Symbol ${symbol} is known to have historical data issues, using recorded purchase price`);
+      return null;  // Fall back to recorded purchase price
+    }
+    
+    console.log(`Fetching historical price for ${symbol} on ${purchaseDate}`);
+    
+    // Parse the purchase date
+    const purchaseDateObj = new Date(purchaseDate);
+    
+    // Check if it's a weekend or holiday and adjust accordingly if needed
+    const dayOfWeek = purchaseDateObj.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      console.log(`Purchase date for ${symbol} (${purchaseDate}) is a weekend, will try to find nearest trading day`);
+    }
+    
+    // Try to get data for a range around the purchase date to increase chances of finding data
+    // Go back 7 days from the purchase date to find trading data
+    const startDate = new Date(purchaseDateObj);
+    startDate.setDate(startDate.getDate() - 7);
+    
+    // End date is the purchase date plus 1 day (to ensure we include the purchase date itself)
+    const endDate = new Date(purchaseDateObj);
+    endDate.setDate(endDate.getDate() + 1);
+    
+    // Use a try/catch block specifically for the historical data request
+    try {
+      const historicalData = await yahooFinance.historical(symbol, {
+        period1: startDate,
+        period2: endDate,
+        interval: '1d'
+      });
+      
+      if (historicalData && historicalData.length > 0) {
+        // Find the closest date to the purchase date
+        let closestIndex = 0;
+        let smallestDiff = Infinity;
+        
+        for (let i = 0; i < historicalData.length; i++) {
+          const date = new Date(historicalData[i].date);
+          const diff = Math.abs(date.getTime() - purchaseDateObj.getTime());
+          if (diff < smallestDiff) {
+            smallestDiff = diff;
+            closestIndex = i;
+          }
+        }
+        
+        const price = historicalData[closestIndex].close;
+        console.log(`Found historical price for ${symbol} on ${new Date(historicalData[closestIndex].date).toLocaleDateString()}: ${price}`);
+        
+        // Cache the historical price for 30 days (since it won't change)
+        await cacheData(historicalCacheKey, price, 30 * 24 * 60 * 60);
+        return price;
+      }
+    } catch (histError: any) {
+      console.log(`Error fetching historical data for ${symbol}: ${histError.message}, falling back to recorded purchase price`);
+    }
+    
+    // If we couldn't get historical data, just fall back to the recorded purchase price
+    return null;
+  } catch (error) {
+    console.error(`Error in historical price lookup for ${symbol}:`, error);
+    return null;
+  }
+};
+
 export async function GET(request: Request) {
   try {
     // Check if we should bypass the cache for fresh data
@@ -139,24 +254,43 @@ export async function GET(request: Request) {
 
       // Calculate current portfolio value using real Yahoo Finance data
       let currentWorth = 0;
-      const stocksWithCurrentPrices = user.stocks.map((stock: Record<string, any>) => {
+      let totalPurchaseValue = 0;
+      
+      // Log the SQL-calculated total_investment for debugging
+      console.log(`User ${user.username} (${user.id}): SQL total_investment: ${user.total_investment}`);
+      
+      // Process stocks with historical prices
+      const stocksWithCurrentPrices = await Promise.all(user.stocks.map(async (stock: Record<string, any>) => {
         const currentPrice = symbolPrices.get(stock.symbol) || stock.purchasePrice;
         const currentValue = stock.quantity * currentPrice;
         currentWorth += currentValue;
         
+        // Get historical price for more accurate purchase value calculation
+        const historicalPrice = await getHistoricalPrice(stock.symbol, stock.purchaseDate, forceRefresh);
+        
+        // Use historical price if available, otherwise use recorded purchase price
+        const actualPurchasePrice = historicalPrice !== null ? historicalPrice : stock.purchasePrice;
+        const purchaseValue = stock.quantity * actualPurchasePrice;
+        totalPurchaseValue += purchaseValue;
+        
         return {
           ...stock,
           currentPrice,
-          currentValue
+          currentValue,
+          historicalPrice: actualPurchasePrice,
+          purchaseValue
         };
-      });
+      }));
 
-      // Calculate total gain based on purchase vs current value
-      const totalGain = currentWorth - user.total_investment;
-      const totalGainPercentage = user.total_investment > 0 
-        ? (totalGain / user.total_investment) * 100 
+      // Calculate total gain based on purchase vs current value - using our calculated totalPurchaseValue
+      const totalGain = currentWorth - totalPurchaseValue;
+      const totalGainPercentage = totalPurchaseValue > 0 
+        ? (totalGain / totalPurchaseValue) * 100 
         : 0;
         
+      // Log the values for debugging - now showing both SQL and calculated values
+      console.log(`User ${user.username} (${user.id}): Current worth: ${currentWorth}, SQL investment: ${user.total_investment}, Calculated purchase value: ${totalPurchaseValue}, Total gain: ${totalGain}, Gain %: ${totalGainPercentage.toFixed(2)}%`);
+      
       // Get historical portfolio data from Redis
       const portfolioHistory = await getPortfolioHistory(user.id, 7);
       
@@ -199,6 +333,9 @@ export async function GET(request: Request) {
       let topGainer = null;
       let topGainerPercentage = 0;
       
+      // Find latest purchase
+      let latestPurchase = null;
+      
       if (stocksWithCurrentPrices.length > 0) {
         // Calculate gain percentage for each stock
         const stocksWithGains = stocksWithCurrentPrices.map((stock: Record<string, any>) => {
@@ -208,13 +345,34 @@ export async function GET(request: Request) {
             : 0;
           
           return { ...stock, gain, gainPercentage };
-        });
+        }) as EnhancedStockType[];
         
         // Sort by gain percentage to find top gainer
-        const sortedByGain = [...stocksWithGains].sort((a, b) => b.gainPercentage - a.gainPercentage);
+        const sortedByGain = [...stocksWithGains].sort((a, b) => 
+          (b.gainPercentage || 0) - (a.gainPercentage || 0)
+        );
+
         if (sortedByGain.length > 0) {
-          topGainer = sortedByGain[0].symbol;
-          topGainerPercentage = sortedByGain[0].gainPercentage;
+          // Use type assertion to fix linter error
+          const topStock = sortedByGain[0] as EnhancedStockType;
+          topGainer = topStock.symbol;
+          topGainerPercentage = topStock.gainPercentage || 0;
+        }
+        
+        // Sort by purchase date to find latest purchase (newest first)
+        const sortedByDate = [...stocksWithGains].sort((a, b) => {
+          const dateA = new Date(a.purchaseDate).getTime();
+          const dateB = new Date(b.purchaseDate).getTime();
+          return dateB - dateA;
+        });
+        
+        if (sortedByDate.length > 0) {
+          const latest = sortedByDate[0] as Record<string, any>;
+          latestPurchase = {
+            symbol: latest.symbol,
+            date: latest.purchaseDate,
+            price: latest.purchasePrice
+          };
         }
       }
 
@@ -246,6 +404,8 @@ export async function GET(request: Request) {
         topGainer,
         topGainerPercentage: topGainerPercentage.toFixed(2),
         currentWorth: formatCurrency(currentWorth),
+        startingAmount: formatCurrency(totalPurchaseValue),
+        latestPurchase,
         chartData,
         stockDistribution
       };
