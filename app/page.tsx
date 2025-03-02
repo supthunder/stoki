@@ -1,16 +1,75 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { UserLeaderboard } from "@/components/user-leaderboard";
 
 export default function Home() {
+  const { user } = useAuth();
+  const [dbInitialized, setDbInitialized] = useState<boolean | null>(null);
+
+  // Initialize the database when the app loads
+  useEffect(() => {
+    const initializeDb = async () => {
+      try {
+        const response = await fetch('/api/init-db');
+        const data = await response.json();
+        setDbInitialized(data.success);
+      } catch (error) {
+        console.error('Failed to initialize database:', error);
+        setDbInitialized(false);
+      }
+    };
+
+    initializeDb();
+  }, []);
+
   return (
-    <main className="flex min-h-screen flex-col items-center p-6 md:p-24">
-      <h1 className="mb-8 text-4xl font-bold">Stoki</h1>
-      <p className="mb-12 text-center text-lg text-muted-foreground">
-        Track your stock portfolio and compete with others
-      </p>
-      
-      <div className="w-full max-w-4xl">
-        <h2 className="mb-6 text-2xl font-semibold">Leaderboard</h2>
-        <UserLeaderboard />
+    <main className="flex min-h-screen flex-col items-center justify-between p-12">
+      <div className="w-full max-w-5xl flex flex-col gap-8">
+        <h1 className="text-4xl font-bold text-center">
+          Welcome to Stoki
+        </h1>
+        <p className="text-center text-xl">
+          {user 
+            ? `Logged in as ${user.username}` 
+            : 'Login to start tracking your stocks'}
+        </p>
+        
+        {dbInitialized === false && (
+          <div className="bg-red-900/20 p-4 rounded-md">
+            <p className="text-center text-red-400">
+              Failed to initialize database. Please try again.
+            </p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="border rounded-lg p-6">
+            <h2 className="text-2xl font-semibold mb-4">Top Gainers</h2>
+            <div className="space-y-3">
+              <p>Coming soon...</p>
+            </div>
+          </div>
+          
+          <div className="border rounded-lg p-6">
+            <h2 className="text-2xl font-semibold mb-4">Your Portfolio</h2>
+            <div className="space-y-3">
+              {user ? (
+                <p>Your stocks will appear here</p>
+              ) : (
+                <p>Login to view your portfolio</p>
+              )}
+            </div>
+          </div>
+          
+          <div className="border rounded-lg p-6">
+            <h2 className="text-2xl font-semibold mb-4">Leaderboard</h2>
+            <div className="space-y-3">
+              <UserLeaderboard />
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );
