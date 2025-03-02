@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -28,6 +28,17 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
 
 // Types for stock data matching what we have in user-portfolio.tsx
 type Stock = {
@@ -80,6 +91,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
   // Performance data states
   const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
   const [performanceLoading, setPerformanceLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("stocks");
   
   // New states for comparison feature
   const [comparisonOptions, setComparisonOptions] = useState<ComparisonOption[]>([
@@ -105,6 +117,81 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     values: [],
     date: ''
   });
+  
+  // Ref to track if the component is mounted
+  const isMounted = React.useRef(true);
+  
+  // Effect to clear the mounted flag on unmount
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+  
+  // Function to refresh today's data point only
+  const refreshTodayData = async () => {
+    if (!userId || !summary) return;
+    
+    try {
+      const days = getOldestPurchaseDate();
+      
+      // First try a complete refresh with force=true parameter
+      const response = await fetch(`/api/portfolio/performance?userId=${userId}&days=${days}&refresh=true&force=true`);
+      
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      
+      if (data.performance && Array.isArray(data.performance) && data.performance.length > 0) {
+        // Only update if component is still mounted
+        if (isMounted.current) {
+          // Replace the entire performance data with the new data
+          setPerformanceData(data.performance);
+          
+          // Log information about the data range
+          console.log(`Refreshed performance data with ${data.performance.length} points from ${data.performance[0]?.date} to ${data.performance[data.performance.length-1]?.date}`);
+        }
+      }
+    } catch (error) {
+      console.error("Error refreshing performance data:", error);
+    }
+  };
+  
+  // Set up auto-refresh for today's data during market hours (9:30 AM - 4:00 PM ET, Mon-Fri)
+  useEffect(() => {
+    const isMarketHours = () => {
+      const now = new Date();
+      const day = now.getDay();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      
+      // Convert to ET (adjust as needed for your timezone)
+      // This is a simple approximation - for precise timezone handling, consider a library
+      const etHour = (hour + 24 - 5) % 24; // Assuming 5 hours behind for ET
+      
+      // Market hours: Mon-Fri, 9:30 AM - 4:00 PM ET
+      return day >= 1 && day <= 5 && // Monday to Friday
+             ((etHour === 9 && minute >= 30) || // 9:30 AM or later
+              (etHour > 9 && etHour < 16) ||    // 10 AM to 3:59 PM
+              (etHour === 16 && minute === 0));  // 4:00 PM exactly
+    };
+    
+    // Refresh immediately
+    if (summary) {
+      refreshTodayData();
+    }
+    
+    // Set up interval for auto-refresh (every 5 minutes during market hours)
+    const intervalId = setInterval(() => {
+      if (summary && isMarketHours()) {
+        refreshTodayData();
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [summary, userId]);
   
   // Find oldest purchase date from portfolio
   const getOldestPurchaseDate = () => {
@@ -158,8 +245,8 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
         // Use oldest purchase date to now
         const days = getOldestPurchaseDate();
         
-        // Use the new API endpoint for performance data
-        const response = await fetch(`/api/portfolio/performance?userId=${userId}&days=${days}`);
+        // Use force=true to ensure we get complete data from the beginning to now
+        const response = await fetch(`/api/portfolio/performance?userId=${userId}&days=${days}&refresh=true&force=true`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch performance data');
@@ -168,6 +255,9 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
         const data = await response.json();
         
         if (data.performance && Array.isArray(data.performance) && data.performance.length > 0) {
+          // Log the date range of the data to help with debugging
+          console.log(`Fetched ${data.performance.length} performance data points from ${data.performance[0]?.date} to ${data.performance[data.performance.length-1]?.date}`);
+          
           // Sort performance data by date to ensure chronological display
           const sortedData = [...data.performance].sort((a, b) => 
             new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -331,6 +421,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
           const currentUserId = `user-${user.id}`;
           // Skip if already in the selected comparisons
           if (!selectedComparisons.includes(currentUserId)) {
+            // Use cached data for comparison charts (don't use refresh=true)
             const response = await fetch(`/api/portfolio/performance?userId=${user.id}&days=${days}`);
             
             if (response.ok) {
@@ -341,17 +432,6 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                   new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
                 newComparisonData[currentUserId] = sortedData;
-                // Add to selected comparisons if not already there 
-                // BUT ONLY ADD IT ONCE - this is what needs to be fixed
-                if (!selectedComparisons.includes(currentUserId)) {
-                  // Instead of directly adding to selectedComparisons, use a Set to ensure uniqueness
-                  setSelectedComparisons(prev => {
-                    // Create a Set to ensure uniqueness
-                    const uniqueComparisons = new Set(prev);
-                    uniqueComparisons.add(currentUserId);
-                    return Array.from(uniqueComparisons);
-                  });
-                }
               }
             }
           }
@@ -392,6 +472,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
           } else if (comparisonId.startsWith('user-')) {
             // Fetch other user data
             const otherUserId = comparisonId.split('user-')[1];
+            // Use cached data for comparisons (don't use refresh=true)
             const response = await fetch(`/api/portfolio/performance?userId=${otherUserId}&days=${days}`);
             
             if (response.ok) {
@@ -721,25 +802,32 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
 
   // Get min and max values for the y-axis scale
   const getValueRange = () => {
-    let values: number[] = performanceData.map(p => p.value);
+    let values: number[] = [];
     
-    // Add comparison data to values
-    Object.values(comparisonData).forEach(dataPoints => {
+    // Convert performanceData to percentage changes
+    if (performanceData.length > 0) {
+      const firstValue = performanceData[0].value;
+      values = performanceData.map(p => ((p.value / firstValue) - 1) * 100);
+    }
+    
+    // Add comparison data to values (also as percentage changes)
+    Object.entries(comparisonData).forEach(([compId, dataPoints]) => {
       if (dataPoints && dataPoints.length > 0) {
-        values = values.concat(dataPoints.map(p => p.value));
+        const firstCompValue = dataPoints[0].value;
+        values = values.concat(dataPoints.map(p => ((p.value / firstCompValue) - 1) * 100));
       }
     });
     
-    if (values.length === 0) return { min: 0, max: 100 };
+    if (values.length === 0) return { min: -10, max: 10 }; // Default range if no data
     
     const min = Math.min(...values);
     const max = Math.max(...values);
     
     // Add some padding to the range (10%)
-    const padding = (max - min) * 0.1;
+    const padding = Math.max(2, (max - min) * 0.1);
     
     return {
-      min: Math.max(0, min - padding), // Don't go below 0
+      min: min - padding,
       max: max + padding
     };
   };
@@ -761,10 +849,14 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     
     if (index >= 0 && index < performanceData.length) {
       const point = performanceData[index];
+      const firstValue = performanceData[0].value;
+      // Calculate percentage change from the first value
+      const percentChange = ((point.value / firstValue) - 1) * 100;
+      
       const values = [{
         id: 'portfolio',
         name: userId === user?.id ? 'Your Portfolio' : `${userName}'s Portfolio`,
-        value: formatCurrency(point.value),
+        value: `${percentChange.toFixed(2)}%`,
         color: '#3b82f6'
       }];
       
@@ -805,10 +897,14 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
               ? 'Your Portfolio' 
               : (option?.name || 'Comparison');
             
+            // Calculate percentage change for this comparison
+            const compFirstValue = data[0].value;
+            const compPercentChange = ((compPoint.value / compFirstValue) - 1) * 100;
+            
             values.push({
               id: compId,
               name,
-              value: formatCurrency(compPoint.value),
+              value: `${compPercentChange.toFixed(2)}%`,
               color
             });
           }
@@ -894,363 +990,242 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={onBack}
-          className="h-8 w-8"
-        >
-          <ArrowLeft className="h-4 w-4" />
+      <div className="flex items-center mb-6">
+        <Button variant="ghost" onClick={onBack} className="mr-2">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
         </Button>
-        <h2 className="text-2xl font-bold">{userName}'s Profile</h2>
+        <h1 className="text-2xl font-bold">{userName}&apos;s Profile</h1>
       </div>
 
-      {/* Basic user info */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16">
-              <AvatarFallback>{getInitials(userName)}</AvatarFallback>
-            </Avatar>
-            <div>
-              <h3 className="text-xl font-semibold">{userName}</h3>
-              {/* Add more user details here when available */}
-              <p className="text-muted-foreground">{userId === user?.id ? 'This is your profile' : 'Community Member'}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Portfolio Summary Card */}
+      {/* Portfolio Performance Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Portfolio Summary</CardTitle>
+          <CardTitle>Portfolio Performance (% Gain)</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : error ? (
-            <p className="text-center text-red-500">{error}</p>
-          ) : !summary ? (
-            <p className="text-center text-muted-foreground py-4">No portfolio data available</p>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-muted p-3 rounded-md">
-                <div className="text-sm text-muted-foreground">Current Value</div>
-                <div className="text-lg font-semibold">
-                  {formatCurrency(summary.totalCurrentValue)}
-                </div>
-              </div>
-              <div className="bg-muted p-3 rounded-md">
-                <div className="text-sm text-muted-foreground">Invested</div>
-                <div className="text-lg font-semibold">
-                  {formatCurrency(summary.totalPurchaseValue)}
-                </div>
-              </div>
-              <div className="bg-muted p-3 rounded-md">
-                <div className="text-sm text-muted-foreground">Total Gain/Loss</div>
-                <div className={`text-lg font-semibold ${summary.totalGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {summary.totalGain >= 0 ? "↑ " : "↓ "}{formatCurrency(summary.totalGain)}
-                </div>
-              </div>
-              <div className="bg-muted p-3 rounded-md">
-                <div className="text-sm text-muted-foreground">Return</div>
-                <div className={`text-lg font-semibold ${summary.totalGainPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatPercentage(summary.totalGainPercentage)}{summary.totalGainPercentage >= 0 ? " ↗" : " ↘"}
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Performance Chart Card - UPDATED */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Portfolio Performance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading || performanceLoading ? (
-            <Skeleton className="h-[250px] w-full" />
+          {performanceLoading ? (
+            <Skeleton className="h-[300px] w-full" />
           ) : error ? (
             <p className="text-center text-red-500">{error}</p>
           ) : performanceData.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">No performance data available</p>
+            <p className="text-center text-muted-foreground py-10">
+              {userId === user?.id ? 'You don\'t have any performance data yet' : 'This user has no performance data'}
+            </p>
           ) : (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Performance from oldest purchase to now</span>
-                <span className={`font-medium ${calculatePerformance() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatPercentage(calculatePerformance())}
-                </span>
-              </div>
-              
+            <div>
               {/* Comparison selector */}
-              <div className="flex flex-wrap gap-2 mb-2">
-                <div className="flex items-center">
-                  <span className="text-sm mr-2">Compare with:</span>
-                  <Select onValueChange={handleComparisonChange}>
-                    <SelectTrigger className="w-[180px] h-8">
-                      <SelectValue placeholder="Select comparison" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sp500">S&P 500</SelectItem>
-                      <SelectItem value="nasdaq">Nasdaq</SelectItem>
-                      {usersList.map((u: {id: number, name: string}) => (
-                        <SelectItem key={`user-${u.id}`} value={`user-${u.id}`}>{u.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="flex items-center mb-4 gap-2">
+                <span className="text-sm">Compare with:</span>
+                <Select value="" onValueChange={handleComparisonChange}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select comparison" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {comparisonOptions.map(option => (
+                      <SelectItem
+                        key={option.id}
+                        value={option.id}
+                        disabled={selectedComparisons.includes(option.id)}
+                      >
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                    {user && user.id !== userId && (
+                      <SelectItem
+                        value={`user-${user.id}`}
+                        disabled={selectedComparisons.includes(`user-${user.id}`)}
+                      >
+                        Your Portfolio
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               
-              {/* Selected comparisons indicators */}
-              {(selectedComparisons.length > 0 || userId !== user?.id) && (
-                <div className="flex flex-wrap gap-2">
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    <span className="text-xs text-blue-500">
-                      {userId === user?.id ? 'Your Portfolio' : `${userName}'s Portfolio`}
-                    </span>
-                  </div>
-                  
-                  {/* Use Set to remove duplicates */}
-                  {Array.from(new Set(selectedComparisons)).map(compId => {
-                    const option = comparisonOptions.find(o => o.id === compId);
-                    // If this is the current user's comparison and we're viewing someone else's profile
-                    const isCurrentUser = user && compId === `user-${user.id}`;
-                    
-                    return option || isCurrentUser ? (
-                      <div key={compId} className="flex items-center gap-1">
-                        <div className={`w-3 h-3 ${isCurrentUser ? 'bg-green-500' : getSeriesColor(compId)} rounded-full`}></div>
-                        <span className={`text-xs ${isCurrentUser ? 'text-green-500' : getTextColor(compId)}`}>
-                          {isCurrentUser ? 'Your Portfolio' : option?.name || 'Loading...'}
-                        </span>
-                        <button 
-                          className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 flex items-center justify-center text-xs leading-none"
-                          onClick={() => setSelectedComparisons(prev => prev.filter(id => id !== compId))}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ) : null;
-                  })}
+              {/* Selected comparison indicators */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <div className="inline-flex items-center px-2 py-1 rounded-full bg-blue-500/20 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>
+                  {userId === user?.id ? 'Your Portfolio' : `${userName}'s Portfolio`}
                 </div>
-              )}
-              
-              {/* Improved area chart visualization */}
-              <div className="h-[350px] w-full relative mt-4 border-b border-l border-muted">
-                {/* Chart background with grid */}
-                <div className="absolute inset-0 left-[70px] bg-gradient-to-b from-background to-muted/30"></div>
-
-                {/* Y-axis labels with actual values */}
-                {(() => {
-                  const range = getValueRange();
-                  const valueLabels = [
-                    range.max,
-                    range.min + (range.max - range.min) * 0.75,
-                    range.min + (range.max - range.min) * 0.5,
-                    range.min + (range.max - range.min) * 0.25,
-                    range.min
-                  ];
-                  
+                {Array.from(new Set(selectedComparisons)).map(compId => {
+                  const option = comparisonOptions.find(o => o.id === compId);
+                  // If this is the current user's comparison and we're viewing someone else's profile
+                  const isCurrentUser = user && compId === `user-${user.id}`;
+                  const color = isCurrentUser 
+                    ? 'bg-green-500' 
+                    : compId === 'sp500' 
+                    ? 'bg-green-500' 
+                    : compId === 'nasdaq' 
+                    ? 'bg-purple-500' 
+                    : 'bg-amber-500';
+                  const bgColor = isCurrentUser 
+                    ? 'bg-green-500/20' 
+                    : compId === 'sp500' 
+                    ? 'bg-green-500/20' 
+                    : compId === 'nasdaq' 
+                    ? 'bg-purple-500/20' 
+                    : 'bg-amber-500/20';
+                    
                   return (
-                    <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-muted-foreground pr-2">
-                      {valueLabels.map((value, i) => (
-                        <span key={i}>{formatCurrency(value)}</span>
-                      ))}
+                    <div key={compId} className={`inline-flex items-center px-2 py-1 rounded-full ${bgColor} text-xs`}>
+                      <span className={`w-2 h-2 rounded-full ${color} mr-2`}></span>
+                      {isCurrentUser ? 'Your Portfolio' : option?.name || 'Loading...'}
+                      <button
+                        className="ml-2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setSelectedComparisons(prev => prev.filter(id => id !== compId))}
+                      >
+                        ✕
+                      </button>
                     </div>
                   );
-                })()}
-                
-                {/* Chart area */}
-                <div className="absolute left-[70px] right-0 top-0 bottom-0">
-                  {/* Horizontal grid lines */}
-                  <div className="absolute left-0 right-0 top-0 h-full flex flex-col justify-between">
-                    <div className="border-t border-dashed border-muted/50 h-0"></div>
-                    <div className="border-t border-dashed border-muted/50 h-0"></div>
-                    <div className="border-t border-dashed border-muted/50 h-0"></div>
-                    <div className="border-t border-dashed border-muted/50 h-0"></div>
-                    <div className="border-t border-dashed border-muted/50 h-0"></div>
-                  </div>
-                  
-                  {/* Portfolio area chart */}
-                  <div className="absolute inset-0">
-                    {performanceData.length > 0 && (
-                      <>
-                        {/* Area fill */}
-                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
-                          <defs>
-                            <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.5" />
-                              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.1" />
-                            </linearGradient>
-                          </defs>
-                          <path
-                            d={(() => {
-                              const range = getValueRange();
-                              const getY = (value: number) => 100 - ((value - range.min) / (range.max - range.min) * 100);
-                              
-                              return `
-                                M0,${getY(performanceData[0].value)}
-                                ${performanceData.map((point, i) => {
-                                  const x = (i / (performanceData.length - 1)) * 100;
-                                  const y = getY(point.value);
-                                  return `L${x},${y}`;
-                                }).join(' ')}
-                                L100,${getY(performanceData[performanceData.length - 1].value)}
-                                L100,100 L0,100 Z
-                              `;
-                            })()}
-                            fill="url(#portfolioGradient)"
-                          />
-                        </svg>
-                        
-                        {/* Line */}
-                        <svg className="w-full h-full absolute top-0 left-0" preserveAspectRatio="none" viewBox="0 0 100 100">
-                          <path
-                            d={(() => {
-                              const range = getValueRange();
-                              const getY = (value: number) => 100 - ((value - range.min) / (range.max - range.min) * 100);
-                              
-                              return `
-                                M0,${getY(performanceData[0].value)}
-                                ${performanceData.map((point, i) => {
-                                  const x = (i / (performanceData.length - 1)) * 100;
-                                  const y = getY(point.value);
-                                  return `L${x},${y}`;
-                                }).join(' ')}
-                              `;
-                            })()}
-                            fill="none"
-                            stroke="#3b82f6"
-                            strokeWidth="2"
-                          />
-                        </svg>
-                      </>
-                    )}
-                  </div>
-                  
-                  {/* Comparison lines */}
-                  {Object.entries(comparisonData).map(([compId, data]) => {
-                    if (!data || data.length === 0) return null;
-                    
-                    // Use green color for current user's portfolio
-                    const isCurrentUser = user && compId === `user-${user.id}`;
-                    const colorRgb = isCurrentUser 
-                      ? '#22c55e' // Green for current user
-                      : compId === 'sp500' 
-                      ? '#22c55e' 
-                      : compId === 'nasdaq' 
-                      ? '#a855f7' 
-                      : '#f59e0b';
-                    
-                    return (
-                      <div key={compId} className="absolute inset-0">
-                        {data.length > 0 && (
-                          <svg className="w-full h-full absolute top-0 left-0" preserveAspectRatio="none" viewBox="0 0 100 100">
-                            <path
-                              d={(() => {
-                                const range = getValueRange();
-                                const getY = (value: number) => 100 - ((value - range.min) / (range.max - range.min) * 100);
-                                
-                                return `
-                                  M0,${getY(data[0].value)}
-                                  ${data.map((point, i) => {
-                                    const x = (i / (data.length - 1)) * 100;
-                                    const y = getY(point.value);
-                                    return `L${x},${y}`;
-                                  }).join(' ')}
-                                `;
-                              })()}
-                              fill="none"
-                              stroke={colorRgb}
-                              strokeWidth={isCurrentUser ? "3" : "2"}
-                              strokeDasharray={isCurrentUser ? "" : compId.startsWith('user-') ? "5,5" : ""}
-                            />
-                          </svg>
-                        )}
-                      </div>
-                    );
-                  })}
-                  
-                  {/* Transparent overlay for hover */}
-                  <svg 
-                    className="w-full h-full absolute top-0 left-0 cursor-crosshair" 
-                    preserveAspectRatio="none"
-                    onMouseMove={handleMouseMove}
-                    onMouseLeave={handleMouseLeave}
+                })}
+              </div>
+              
+              {/* Chart area */}
+              <div className="h-[300px] relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart 
+                    data={performanceData.map((point, idx) => {
+                      const firstValue = performanceData[0].value;
+                      const percentChange = ((point.value / firstValue) - 1) * 100;
+                      
+                      // Create an object with all comparison data for this date point
+                      const comparisonValues: {[key: string]: number} = {};
+                      
+                      Object.entries(comparisonData).forEach(([compId, data]) => {
+                        if (data && data.length > idx) {
+                          const compFirstValue = data[0].value;
+                          const compValue = data[idx]?.value || compFirstValue;
+                          const compPercentChange = ((compValue / compFirstValue) - 1) * 100;
+                          comparisonValues[compId] = compPercentChange;
+                        }
+                      });
+                      
+                      return {
+                        date: point.date,
+                        portfolio: percentChange,
+                        ...comparisonValues
+                      };
+                    })}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                   >
-                    <rect 
-                      x="0" 
-                      y="0" 
-                      width="100%" 
-                      height="100%" 
-                      fill="transparent" 
+                    <defs>
+                      <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.05" />
+                      </linearGradient>
+                      <linearGradient id="sp500Gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
+                        <stop offset="100%" stopColor="#22c55e" stopOpacity="0.05" />
+                      </linearGradient>
+                      <linearGradient id="nasdaqGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#a855f7" stopOpacity="0.2" />
+                        <stop offset="100%" stopColor="#a855f7" stopOpacity="0.05" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fontSize: 10 }} 
+                      tickFormatter={(value) => {
+                        // Format date to show only month and day
+                        const date = new Date(value);
+                        return `${date.getMonth() + 1}/${date.getDate()}`;
+                      }}
+                      axisLine={{ stroke: '#333' }}
+                      tickLine={false}
+                      minTickGap={30}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(value) => `${value.toFixed(1)}%`}
+                      axisLine={{ stroke: '#333' }}
+                      tickLine={false}
+                      domain={[
+                        (dataMin: number) => Math.floor(dataMin - 5), 
+                        (dataMax: number) => Math.ceil(dataMax + 5)
+                      ]}
+                    />
+                    <Tooltip 
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-black/80 border border-gray-700 p-2 rounded text-white text-xs">
+                              <p className="font-bold mb-1">{new Date(label).toLocaleDateString()}</p>
+                              {payload.map((item: any, index: number) => {
+                                let name = "Portfolio";
+                                
+                                // Find name for comparison item
+                                if (item.dataKey !== 'portfolio') {
+                                  const compId = item.dataKey;
+                                  const option = comparisonOptions.find(o => o.id === compId);
+                                  const isCurrentUser = user && compId === `user-${user.id}`;
+                                  name = isCurrentUser ? 'Your Portfolio' : option?.name || compId;
+                                } else {
+                                  name = userId === user?.id ? 'Your Portfolio' : `${userName}'s Portfolio`;
+                                }
+                                
+                                return (
+                                  <div key={index} className="flex items-center gap-2">
+                                    <span 
+                                      className="w-2 h-2 rounded-full" 
+                                      style={{ backgroundColor: item.stroke }}
+                                    ></span>
+                                    <span>{name}: {item.value.toFixed(2)}%</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="portfolio"
+                      stroke="#3b82f6"
+                      strokeWidth={1.5}
+                      fill="url(#portfolioGradient)"
+                      activeDot={{ r: 4 }}
+                      isAnimationActive={false}
                     />
                     
-                    {/* Tooltip */}
-                    {tooltipData.visible && (
-                      <g>
-                        {/* Vertical line indicator */}
-                        <line 
-                          x1={tooltipData.x} 
-                          y1="0" 
-                          x2={tooltipData.x} 
-                          y2="100%" 
-                          stroke="#ffffff33" 
-                          strokeWidth="1" 
-                          strokeDasharray="3,3" 
+                    {/* Render comparison lines */}
+                    {Array.from(new Set(selectedComparisons)).map(compId => {
+                      const isCurrentUser = user && compId === `user-${user.id}`;
+                      const color = isCurrentUser 
+                        ? '#22c55e' // Green for current user
+                        : compId === 'sp500' 
+                        ? '#22c55e' 
+                        : compId === 'nasdaq' 
+                        ? '#a855f7' 
+                        : '#f59e0b';
+                      
+                      const gradientId = compId === 'sp500' 
+                        ? 'sp500Gradient' 
+                        : compId === 'nasdaq' 
+                        ? 'nasdaqGradient' 
+                        : '';
+                      
+                      return (
+                        <Area
+                          key={compId}
+                          type="monotone"
+                          dataKey={compId}
+                          stroke={color}
+                          strokeWidth={1}
+                          fill={gradientId ? `url(#${gradientId})` : "transparent"}
+                          activeDot={{ r: 4 }}
+                          isAnimationActive={false}
+                          strokeDasharray={isCurrentUser ? "" : compId.startsWith('user-') ? "3,3" : ""}
                         />
-                        
-                        {/* Tooltip background */}
-                        <rect 
-                          x={tooltipData.x > 50 ? tooltipData.x - 150 : tooltipData.x + 10}
-                          y="10"
-                          width="140" 
-                          height={30 + tooltipData.values.length * 20} 
-                          rx="4" 
-                          fill="#000000AA" 
-                        />
-                        
-                        {/* Date */}
-                        <text 
-                          x={tooltipData.x > 50 ? tooltipData.x - 145 : tooltipData.x + 15}
-                          y="25"
-                          fill="white" 
-                          fontSize="12"
-                          fontWeight="bold"
-                        >
-                          {tooltipData.date}
-                        </text>
-                        
-                        {/* Values */}
-                        {tooltipData.values.map((item, idx) => (
-                          <g key={item.id}>
-                            <circle 
-                              cx={tooltipData.x > 50 ? tooltipData.x - 135 : tooltipData.x + 25} 
-                              cy={25 + 20 * (idx + 1)}
-                              r="4" 
-                              fill={item.color} 
-                            />
-                            <text 
-                              x={tooltipData.x > 50 ? tooltipData.x - 125 : tooltipData.x + 35}
-                              y={25 + 20 * (idx + 1) + 4}
-                              fill="white" 
-                              fontSize="10"
-                            >
-                              {`${item.name}: ${item.value}`}
-                            </text>
-                          </g>
-                        ))}
-                      </g>
-                    )}
-                  </svg>
-                </div>
+                      );
+                    })}
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
               
               {/* Date labels under chart */}
@@ -1265,14 +1240,18 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
               {/* Performance comparison metrics */}
               {(selectedComparisons.length > 0 || (user && user.id !== userId)) && performanceData.length > 0 && (
                 <div className="mt-4 border-t pt-4">
-                  <h4 className="text-sm font-medium mb-2">Performance Comparison</h4>
+                  <h4 className="text-sm font-medium mb-2">Performance Comparison (% Gain)</h4>
                   <div className="space-y-2">
                     <div className="flex justify-between items-center py-1 border-b border-muted">
                       <span className="text-xs text-blue-500">
                         {userId === user?.id ? 'Your Portfolio' : `${userName}'s Portfolio`}
                       </span>
-                      <span className={`text-xs font-medium ${calculatePerformance() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <span className={`text-xs font-medium flex items-center gap-1 ${calculatePerformance() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatPercentage(calculatePerformance())}
+                        {calculatePerformance() >= 0 ? 
+                          <TrendingUp className="h-3 w-3" /> : 
+                          <TrendingDown className="h-3 w-3" />
+                        }
                       </span>
                     </div>
                     
@@ -1296,8 +1275,12 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                           <span className={`text-xs ${isCurrentUser ? 'text-green-500' : getTextColor(compId)}`}>
                             {isCurrentUser ? 'Your Portfolio' : option?.name || 'Loading...'}
                           </span>
-                          <span className={`text-xs font-medium ${performance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span className={`text-xs font-medium flex items-center gap-1 ${performance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {compData && compData.length >= 2 ? formatPercentage(performance) : '-'}
+                            {performance >= 0 ? 
+                              <TrendingUp className="h-3 w-3" /> : 
+                              <TrendingDown className="h-3 w-3" />
+                            }
                           </span>
                         </div>
                       ) : null;
@@ -1835,7 +1818,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                       <div className={`w-3 h-6 ${sectorDistribution.length > 2 ? 'bg-green-500/60' : 'bg-amber-500/60'} rounded-sm`}></div>
                       <div className={`w-3 h-8 ${sectorDistribution.length > 2 ? 'bg-green-500/70' : 'bg-amber-500/70'} rounded-sm`}></div>
                       <div className={`w-3 h-10 ${sectorDistribution.length === 1 ? 'bg-red-500/70' : 'bg-amber-500/70'} rounded-sm`}></div>
-                      <div className={`w-3 h-8 ${sectorDistribution.length === 1 ? 'bg-red-500/60' : 'bg-amber-500/60'} rounded-sm`}></div>
+                      <div className={`w-3 h-8 ${sectorDistribution.length === 1 ? 'bg-red-500/60' : 'bg-green-500/60'} rounded-sm`}></div>
                       <div className={`w-3 h-6 ${sectorDistribution.length === 1 ? 'bg-red-500/60' : 'bg-green-500/60'} rounded-sm`}></div>
                     </div>
                   </div>
