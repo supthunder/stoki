@@ -1,28 +1,19 @@
 import { NextResponse } from "next/server";
+import yahooFinance from "yahoo-finance2";
 
-// Mock stock data for demo purposes
-const mockStocks = [
-  { symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', exchange: 'NASDAQ' },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', exchange: 'NASDAQ' },
-  { symbol: 'AMZN', name: 'Amazon.com Inc.', exchange: 'NASDAQ' },
-  { symbol: 'META', name: 'Meta Platforms Inc.', exchange: 'NASDAQ' },
-  { symbol: 'TSLA', name: 'Tesla Inc.', exchange: 'NASDAQ' },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', exchange: 'NASDAQ' },
-  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', exchange: 'NYSE' },
-  { symbol: 'V', name: 'Visa Inc.', exchange: 'NYSE' },
-  { symbol: 'JNJ', name: 'Johnson & Johnson', exchange: 'NYSE' },
-  { symbol: 'WMT', name: 'Walmart Inc.', exchange: 'NYSE' },
-  { symbol: 'PG', name: 'Procter & Gamble Co.', exchange: 'NYSE' },
-  { symbol: 'MA', name: 'Mastercard Inc.', exchange: 'NYSE' },
-  { symbol: 'UNH', name: 'UnitedHealth Group Inc.', exchange: 'NYSE' },
-  { symbol: 'HD', name: 'Home Depot Inc.', exchange: 'NYSE' },
-  { symbol: 'BAC', name: 'Bank of America Corp.', exchange: 'NYSE' },
-  { symbol: 'XOM', name: 'Exxon Mobil Corporation', exchange: 'NYSE' },
-  { symbol: 'DIS', name: 'Walt Disney Co.', exchange: 'NYSE' },
-  { symbol: 'NFLX', name: 'Netflix Inc.', exchange: 'NASDAQ' },
-  { symbol: 'ADBE', name: 'Adobe Inc.', exchange: 'NASDAQ' },
-];
+// Define types for the Yahoo Finance search results
+type YahooSearchResultQuote = {
+  exchange?: string;
+  shortname?: string;
+  longname?: string;
+  quoteType?: string;
+  symbol?: string;
+  index?: string;
+  score?: number;
+  typeDisp?: string;
+  isYahooFinance?: boolean;
+  name?: string;
+};
 
 export async function GET(request: Request) {
   try {
@@ -30,24 +21,36 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query');
     
-    if (!query) {
+    if (!query || query.length < 1) {
       return NextResponse.json(
         { error: 'Search query is required' },
         { status: 400 }
       );
     }
     
-    // In a real app, you would call an external API like Alpha Vantage, Yahoo Finance, etc.
-    // For this demo, we'll filter our mock data
-    const results = mockStocks.filter(stock => 
-      stock.symbol.toLowerCase().includes(query.toLowerCase()) || 
-      stock.name.toLowerCase().includes(query.toLowerCase())
-    );
+    // Use the search module from Yahoo Finance
+    const result = await yahooFinance.search(query);
     
-    // Simulate a slight delay for realism
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Filter out results that aren't quotes (stocks, ETFs)
+    const stockResults = result.quotes
+      .filter((item: YahooSearchResultQuote) => 
+        item.quoteType === 'EQUITY' || item.quoteType === 'ETF')
+      .map((item: YahooSearchResultQuote) => ({
+        symbol: item.symbol || '',
+        name: item.shortname || item.longname || item.name || item.symbol || '',
+        exchange: item.exchange || '',
+        quoteType: item.quoteType || item.typeDisp || ''
+      }));
     
-    return NextResponse.json(results);
+    // If no results, return a 404
+    if (stockResults.length === 0) {
+      return NextResponse.json(
+        { error: 'No stocks found matching your query' },
+        { status: 404 }
+      );
+    }
+    
+    return NextResponse.json(stockResults);
   } catch (error) {
     console.error('Error searching for stocks:', error);
     return NextResponse.json(

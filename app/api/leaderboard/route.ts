@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSqlClient } from "@/lib/db";
+import yahooFinance from "yahoo-finance2";
 
 // Define types for our data structures
 type Stock = {
@@ -36,8 +37,8 @@ export async function GET() {
   try {
     const sql = createSqlClient();
     
-    // Query to get users with their portfolio data
-    const query = `
+    // Execute query to get users with their portfolio data using tagged template literal
+    const result = await sql`
       WITH user_portfolio AS (
         SELECT 
           u.id as user_id,
@@ -61,7 +62,7 @@ export async function GET() {
               'purchasePrice', up.purchase_price,
               'purchaseDate', up.purchase_date
             )
-          ) as stocks
+          ) FILTER (WHERE up.symbol IS NOT NULL) as stocks
         FROM user_portfolio up
         GROUP BY up.user_id, up.username
       )
@@ -74,14 +75,50 @@ export async function GET() {
       ORDER BY total_invested DESC
     `;
     
-    const result = await sql.query(query);
+    // Collect all unique stock symbols across all users
+    const allSymbols = new Set<string>();
+    for (const user of result) {
+      if (user.stocks && Array.isArray(user.stocks)) {
+        for (const stock of user.stocks) {
+          if (stock.symbol) {
+            allSymbols.add(stock.symbol);
+          }
+        }
+      }
+    }
+    
+    // Fetch real-time quotes for all symbols in a single batch request
+    const symbolPrices = new Map<string, number>();
+    
+    if (allSymbols.size > 0) {
+      try {
+        const symbols = Array.from(allSymbols);
+        const quotesResponse = await yahooFinance.quote(symbols);
+        
+        // Process the quotes response
+        if (Array.isArray(quotesResponse)) {
+          for (const quote of quotesResponse) {
+            const typedQuote = quote as unknown as { symbol: string; regularMarketPrice: number };
+            if (typedQuote.symbol && typedQuote.regularMarketPrice) {
+              symbolPrices.set(typedQuote.symbol, typedQuote.regularMarketPrice);
+            }
+          }
+        } else if (quotesResponse) {
+          const quote = quotesResponse as unknown as { symbol: string; regularMarketPrice: number };
+          if (quote.symbol && quote.regularMarketPrice) {
+            symbolPrices.set(quote.symbol, quote.regularMarketPrice);
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching stock quotes:", e);
+        // Continue with default prices if fetch fails
+      }
+    }
     
     // Process the results to calculate gains
-    // In a real app, you would fetch current prices from an external API
-    // For now, we'll simulate with random gains
-    const leaderboardData = result.map((user: UserWithStocks) => {
+    const leaderboardData = result.map((user: Record<string, any>) => {
       // Skip users with no stocks
-      if (!user.stocks || user.stocks[0]?.symbol === null) {
+      if (!user.stocks || !Array.isArray(user.stocks) || user.stocks.length === 0) {
         return {
           id: user.id,
           name: user.name,
@@ -95,16 +132,16 @@ export async function GET() {
       
       // Calculate current worth and gains
       let totalCurrentWorth = 0;
-      let totalInvested = parseFloat(user.total_invested);
+      let totalInvested = parseFloat(user.total_invested || '0');
       
       // Process each stock to calculate current worth and find top gainer
       const stocksWithGains = user.stocks.map((stock: Stock) => {
-        // Simulate current price with a random gain/loss between -20% and +50%
-        const randomFactor = 0.8 + (Math.random() * 0.7); // Between 0.8 and 1.5
-        const currentPrice = stock.purchasePrice * randomFactor;
+        // Get the current price from our map, or fall back to purchase price
+        const currentPrice = symbolPrices.get(stock.symbol) || stock.purchasePrice;
         const stockWorth = stock.quantity * currentPrice;
         const stockGain = stockWorth - (stock.quantity * stock.purchasePrice);
-        const stockGainPercentage = (stockGain / (stock.quantity * stock.purchasePrice)) * 100;
+        const stockGainPercentage = stock.purchasePrice > 0 ? 
+          (stockGain / (stock.quantity * stock.purchasePrice)) * 100 : 0;
         
         totalCurrentWorth += stockWorth;
         

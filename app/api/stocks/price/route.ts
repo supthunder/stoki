@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import yahooFinance from "yahoo-finance2";
 
 // Mock data for historical prices (simplified for demo)
 // In a real implementation, you would use a proper API
@@ -147,35 +148,38 @@ export async function GET(request: Request) {
       );
     }
     
-    // In a real app, you would call an external API to get the current price
-    // For this demo, we'll use our mock data
-    const price = mockPrices[symbol.toUpperCase()];
+    // Fetch real-time quote data from Yahoo Finance
+    const quote = await yahooFinance.quote(symbol.toUpperCase());
     
-    if (!price) {
-      // If we don't have a price for this symbol, generate a random one
-      // This is just for demo purposes
-      const randomPrice = Math.round(Math.random() * 1000 * 100) / 100;
-      
-      return NextResponse.json({
-        symbol: symbol.toUpperCase(),
-        price: randomPrice,
-        generated: true
-      });
-    }
+    // Extract the relevant data from the quote response
+    const data = {
+      symbol: quote.symbol,
+      price: quote.regularMarketPrice,
+      change: quote.regularMarketChange,
+      changePercent: quote.regularMarketChangePercent,
+      previousClose: quote.regularMarketPreviousClose,
+      open: quote.regularMarketOpen,
+      dayHigh: quote.regularMarketDayHigh,
+      dayLow: quote.regularMarketDayLow,
+      marketCap: quote.marketCap,
+      volume: quote.regularMarketVolume,
+      shortName: quote.shortName,
+      longName: quote.longName,
+      currency: quote.currency
+    };
     
-    // Add some random variation to simulate price changes
-    const variation = (Math.random() - 0.5) * 0.05; // +/- 2.5%
-    const currentPrice = price * (1 + variation);
-    
-    // Simulate a slight delay for realism
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    return NextResponse.json({
-      symbol: symbol.toUpperCase(),
-      price: parseFloat(currentPrice.toFixed(2))
-    });
+    return NextResponse.json(data);
   } catch (error) {
     console.error('Error getting stock price:', error);
+    
+    // Check if it's a "symbol not found" error
+    if (error instanceof Error && error.message.includes("Not Found")) {
+      return NextResponse.json(
+        { error: 'Stock symbol not found' },
+        { status: 404 }
+      );
+    }
+    
     return NextResponse.json(
       { error: 'Failed to get stock price' },
       { status: 500 }

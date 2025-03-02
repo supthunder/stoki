@@ -38,9 +38,18 @@ const stockFormSchema = z.object({
     .min(0.01, "Price must be greater than 0")
     .max(1000000, "Price too large"),
   purchaseDate: z.string().optional(),
+  usePurchasePrice: z.boolean().default(true),
 });
 
 type StockFormValues = z.infer<typeof stockFormSchema>;
+
+// Stock search result type
+type StockResult = {
+  symbol: string;
+  name: string;
+  exchange?: string;
+  quoteType?: string;
+};
 
 type AddStockDialogProps = {
   open: boolean;
@@ -57,6 +66,7 @@ export function AddStockDialog({
   const { toast } = useToast();
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchResults, setSearchResults] = useState<StockResult[]>([]);
 
   // Initialize form
   const form = useForm<StockFormValues>({
@@ -67,47 +77,55 @@ export function AddStockDialog({
       quantity: 1,
       purchasePrice: 0,
       purchaseDate: new Date().toISOString().split("T")[0],
+      usePurchasePrice: true,
     },
   });
 
   // Search for stock by symbol
   const searchStock = async (symbol: string) => {
-    if (!symbol) return;
+    if (!symbol || symbol.length < 2) {
+      setSearchResults([]);
+      return;
+    }
 
+    setIsSearching(true);
     try {
-      setIsSearching(true);
-      const response = await fetch(`/api/stocks/search?query=${symbol}`);
+      const response = await fetch(`/api/stocks/search?query=${encodeURIComponent(symbol)}`);
       
       if (!response.ok) {
+        if (response.status === 404) {
+          setSearchResults([]);
+          return;
+        }
         throw new Error("Failed to search for stock");
       }
       
+      // Get the search results
       const data = await response.json();
-      
+      setSearchResults(data);
+
+      // If we have results, get the price for the first one
       if (data.length > 0) {
-        // Use the first result
         const stock = data[0];
         form.setValue("symbol", stock.symbol);
         form.setValue("companyName", stock.name);
         
         // Get current price
-        const priceResponse = await fetch(`/api/stocks/price?symbol=${stock.symbol}`);
-        if (priceResponse.ok) {
-          const priceData = await priceResponse.json();
-          form.setValue("purchasePrice", priceData.price);
+        try {
+          const priceResponse = await fetch(`/api/stocks/price?symbol=${stock.symbol}`);
+          if (priceResponse.ok) {
+            const priceData = await priceResponse.json();
+            form.setValue("purchasePrice", priceData.price);
+          }
+        } catch (e) {
+          console.error("Error fetching price:", e);
         }
-      } else {
-        toast({
-          title: "Stock not found",
-          description: "No matching stocks found. Please check the symbol.",
-          variant: "destructive",
-        });
       }
     } catch (error) {
       console.error("Error searching for stock:", error);
       toast({
-        title: "Search failed",
-        description: "Failed to search for stock. Please try again.",
+        title: "Error",
+        description: "Failed to search for stocks. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -119,8 +137,8 @@ export function AddStockDialog({
   const onSubmit = async (values: StockFormValues) => {
     if (!user) {
       toast({
-        title: "Authentication required",
-        description: "Please log in to add stocks to your portfolio.",
+        title: "Error",
+        description: "You must be logged in to add stocks.",
         variant: "destructive",
       });
       return;
@@ -129,6 +147,21 @@ export function AddStockDialog({
     try {
       setIsSubmitting(true);
       
+      // Get current price if needed
+      let currentPrice = values.purchasePrice;
+      if (!values.usePurchasePrice) {
+        try {
+          const priceResponse = await fetch(`/api/stocks/price?symbol=${values.symbol}`);
+          if (priceResponse.ok) {
+            const priceData = await priceResponse.json();
+            currentPrice = priceData.price;
+          }
+        } catch (e) {
+          console.error("Error fetching current price:", e);
+        }
+      }
+      
+      // Add the stock to the portfolio
       const response = await fetch("/api/portfolio/add", {
         method: "POST",
         headers: {
@@ -136,30 +169,31 @@ export function AddStockDialog({
         },
         body: JSON.stringify({
           userId: user.id,
-          ...values,
+          symbol: values.symbol,
+          companyName: values.companyName,
+          quantity: values.quantity,
+          purchasePrice: currentPrice,
+          purchaseDate: values.purchaseDate || new Date().toISOString().split('T')[0],
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to add stock");
+        throw new Error("Failed to add stock to portfolio");
       }
 
       toast({
-        title: "Stock added",
-        description: `${values.symbol} has been added to your portfolio.`,
+        title: "Success",
+        description: `${values.quantity} shares of ${values.symbol} added to your portfolio.`,
       });
-      
-      // Reset form and close dialog
+
       form.reset();
-      onOpenChange(false);
-      
-      // Refresh portfolio data
       onStockAdded();
+      onOpenChange(false);
     } catch (error) {
       console.error("Error adding stock:", error);
       toast({
-        title: "Failed to add stock",
-        description: "An error occurred while adding the stock. Please try again.",
+        title: "Error",
+        description: "Failed to add stock to your portfolio. Please try again.",
         variant: "destructive",
       });
     } finally {
