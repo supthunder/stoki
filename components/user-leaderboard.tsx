@@ -10,7 +10,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -118,7 +117,7 @@ export function UserLeaderboard() {
 
   if (error) {
     return (
-      <Card>
+      <div className="rounded-md border bg-card text-card-foreground">
         <div className="p-4 text-center text-red-500">
           <p>{error}</p>
           <button 
@@ -128,12 +127,12 @@ export function UserLeaderboard() {
             Retry
           </button>
         </div>
-      </Card>
+      </div>
     );
   }
 
   return (
-    <Card>
+    <div className="rounded-md border bg-card text-card-foreground">
       <Table>
         <TableHeader>
           <TableRow>
@@ -207,6 +206,6 @@ export function UserLeaderboard() {
           )}
         </TableBody>
       </Table>
-    </Card>
+    </div>
   );
 } 

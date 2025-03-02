@@ -22,7 +22,7 @@ export default function Home() {
           <TabsTrigger value="portfolio">Your Portfolio</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="leaderboard" className="p-4">
+        <TabsContent value="leaderboard" className="pt-4">
           <UserLeaderboard />
         </TabsContent>
         
