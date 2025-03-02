@@ -6,26 +6,47 @@
 const { neon } = require('@neondatabase/serverless');
 require('dotenv').config({ path: '.env.local' });
 
-// Get database URL from environment variables
-const DATABASE_URL = 
-  process.env.DATABASE_URL || 
-  process.env.POSTGRES_URL || 
-  process.env.POSTGRES_URL_NON_POOLING;
+// Get database URL from environment variables and validate it
+function getDatabaseUrl() {
+  const url = 
+    process.env.DATABASE_URL || 
+    process.env.POSTGRES_URL || 
+    process.env.POSTGRES_URL_NON_POOLING;
 
-async function initializeDb() {
-  if (!DATABASE_URL) {
+  if (!url) {
     console.error('Error: Database connection string missing');
     console.error('Make sure one of these environment variables is set:');
     console.error('- DATABASE_URL');
     console.error('- POSTGRES_URL');
     console.error('- POSTGRES_URL_NON_POOLING');
+    return null;
+  }
+
+  // Basic URL validation
+  try {
+    // Only validate URL if it's a proper URL (not a socket path)
+    if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+      new URL(url);
+    }
+    return url;
+  } catch (error) {
+    console.error('Error: Invalid database URL format');
+    console.error('The connection string must be a valid URL');
+    return null;
+  }
+}
+
+async function initializeDb() {
+  const databaseUrl = getDatabaseUrl();
+  
+  if (!databaseUrl) {
     process.exit(1);
   }
 
   console.log('Connecting to database...');
-  const sql = neon(DATABASE_URL);
-
   try {
+    const sql = neon(databaseUrl);
+
     console.log('Creating users table...');
     await sql`
       CREATE TABLE IF NOT EXISTS users (

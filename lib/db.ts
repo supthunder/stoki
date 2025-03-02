@@ -1,20 +1,36 @@
 import { neon } from '@neondatabase/serverless';
 
 // Get database URL from environment variables
-const DATABASE_URL = 
-  process.env.DATABASE_URL || 
-  process.env.POSTGRES_URL || 
-  process.env.POSTGRES_URL_NON_POOLING;
+const getDatabaseUrl = () => {
+  const url = 
+    process.env.DATABASE_URL || 
+    process.env.POSTGRES_URL || 
+    process.env.POSTGRES_URL_NON_POOLING;
+  
+  if (!url) {
+    console.error('Database connection string missing. Please check your environment variables.');
+    console.error('Required environment variables: DATABASE_URL, POSTGRES_URL, or POSTGRES_URL_NON_POOLING');
+    
+    // In development, return null; in production, throw
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Database connection string missing');
+    }
+    return null;
+  }
+  
+  return url;
+};
 
 // Create a SQL function that connects to the database
 const createSqlClient = () => {
-  if (!DATABASE_URL) {
-    console.error('Database connection string missing. Please check your environment variables.');
-    console.error('Required environment variables: DATABASE_URL, POSTGRES_URL, or POSTGRES_URL_NON_POOLING');
+  const url = getDatabaseUrl();
+  
+  if (!url) {
     throw new Error('Database connection string missing');
   }
   
-  return neon(DATABASE_URL);
+  // Create the SQL client with the Neon serverless driver
+  return neon(url);
 };
 
 // User functions - only used server-side in API routes

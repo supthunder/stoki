@@ -1,25 +1,54 @@
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
-// Get database URL from environment variables
-const DATABASE_URL = 
-  process.env.DATABASE_URL || 
-  process.env.POSTGRES_URL || 
-  process.env.POSTGRES_URL_NON_POOLING;
-
 // Add this to prevent static generation of this API route
 export const dynamic = 'force-dynamic';
 
+// Get database URL from environment variables and validate it
+function getDatabaseUrl() {
+  const url = 
+    process.env.DATABASE_URL || 
+    process.env.POSTGRES_URL || 
+    process.env.POSTGRES_URL_NON_POOLING;
+
+  if (!url) {
+    return null;
+  }
+
+  // Basic URL validation
+  try {
+    // Only validate URL if it's a proper URL (not a socket path)
+    if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+      new URL(url);
+    }
+    return url;
+  } catch (error) {
+    console.error('Error: Invalid database URL format:', error);
+    return null;
+  }
+}
+
 export async function GET() {
-  if (!DATABASE_URL) {
+  const databaseUrl = getDatabaseUrl();
+  
+  if (!databaseUrl) {
     return NextResponse.json(
-      { success: false, error: 'Database connection string missing' },
+      { 
+        success: false, 
+        error: 'Database connection string missing or invalid', 
+        environmentCheck: {
+          POSTGRES_URL: process.env.POSTGRES_URL ? "✅ Present" : "❌ Missing",
+          POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING ? "✅ Present" : "❌ Missing",
+          DATABASE_URL: process.env.DATABASE_URL ? "✅ Present" : "❌ Missing",
+        }
+      },
       { status: 500 }
     );
   }
 
   try {
-    const sql = neon(DATABASE_URL);
+    console.log('Connecting to database...');
+    const sql = neon(databaseUrl);
 
     // Create the users table if it doesn't exist
     await sql`
@@ -44,11 +73,27 @@ export async function GET() {
       )
     `;
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      message: "Database initialized successfully",
+      environmentCheck: {
+        POSTGRES_URL: process.env.POSTGRES_URL ? "✅ Present" : "❌ Missing",
+        POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING ? "✅ Present" : "❌ Missing",
+        DATABASE_URL: process.env.DATABASE_URL ? "✅ Present" : "❌ Missing",
+      }
+    });
   } catch (error) {
     console.error('Error initializing database:', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        environmentCheck: {
+          POSTGRES_URL: process.env.POSTGRES_URL ? "✅ Present" : "❌ Missing",
+          POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING ? "✅ Present" : "❌ Missing",
+          DATABASE_URL: process.env.DATABASE_URL ? "✅ Present" : "❌ Missing",
+        }
+      },
       { status: 500 }
     );
   }
