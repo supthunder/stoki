@@ -27,6 +27,7 @@ import {
   Cell,
 } from "recharts";
 import { Button } from "@/components/ui/button";
+import { UserProfile } from "@/components/user-profile";
 
 // Types for user stock data
 type LeaderboardUser = {
@@ -53,6 +54,7 @@ export function UserLeaderboard() {
   const [viewMode, setViewMode] = useState("table"); // "table" or "cards"
   const [sortBy, setSortBy] = useState("currentWorth");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
 
   const fetchLeaderboardData = async (forceRefresh = false) => {
     try {
@@ -242,8 +244,16 @@ export function UserLeaderboard() {
     );
   };
 
-  const handleRefresh = (e: MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
+  const handleUserClick = (user: LeaderboardUser) => {
+    setSelectedUser(user);
+  };
+
+  const handleBackToLeaderboard = () => {
+    setSelectedUser(null);
+  };
+
+  // This function ensures the event parameter doesn't get passed to fetchLeaderboardData
+  const handleRefresh = () => {
     fetchLeaderboardData(true);
   };
 
@@ -253,13 +263,23 @@ export function UserLeaderboard() {
         <div className="p-4 text-center text-red-500">
           <p>{error}</p>
           <button 
-            onClick={fetchLeaderboardData} 
+            onClick={() => fetchLeaderboardData()} 
             className="mt-2 text-primary hover:underline"
           >
             Retry
           </button>
         </div>
       </div>
+    );
+  }
+
+  if (selectedUser) {
+    return (
+      <UserProfile 
+        userId={selectedUser.id} 
+        userName={selectedUser.name} 
+        onBack={handleBackToLeaderboard} 
+      />
     );
   }
 
@@ -271,10 +291,7 @@ export function UserLeaderboard() {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={(e) => {
-              e.preventDefault();
-              fetchLeaderboardData(true);
-            }}
+            onClick={() => fetchLeaderboardData(true)}
             disabled={loading}
           >
             {loading ? (
@@ -344,7 +361,11 @@ export function UserLeaderboard() {
                 </TableRow>
               ) : (
                 sortedUsers.map((user, index) => (
-                  <TableRow key={user.id} className={highlightCurrentUser(user.id)}>
+                  <TableRow 
+                    key={user.id} 
+                    className={`${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/50`}
+                    onClick={() => handleUserClick(user)}
+                  >
                     <TableCell className="font-medium">{index + 1}</TableCell>
                     <TableCell className="font-medium">
                       {user.name}
@@ -475,7 +496,8 @@ export function UserLeaderboard() {
             sortedUsers.map((user, index) => (
               <Card 
                 key={user.id} 
-                className={`mb-4 ${highlightCurrentUser(user.id)}`}
+                className={`mb-4 ${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/10`}
+                onClick={() => handleUserClick(user)}
               >
                 <CardContent className="pt-6">
                   <div className="flex justify-between items-center mb-4">
