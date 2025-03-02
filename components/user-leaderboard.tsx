@@ -111,7 +111,7 @@ export function UserLeaderboard() {
             </TableRow>
           ) : (
             users
-              .sort((a, b) => b.totalGain - a.totalGain)
+              .sort((a, b) => b.currentWorth - a.currentWorth)
               .map((user, index) => (
                 <TableRow key={user.id} className={highlightCurrentUser(user.id)}>
                   <TableCell className="font-medium">{index + 1}</TableCell>

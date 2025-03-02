@@ -77,9 +77,44 @@ export async function GET() {
     
     console.log('Leaderboard query result:', result);
     
+    // Get specific politician data to ensure they're included
+    const politicianResult = await sql`
+      SELECT 
+        u.id as id,
+        u.username as name,
+        SUM(s.quantity * s.purchase_price) as total_invested,
+        json_agg(
+          json_build_object(
+            'symbol', s.symbol,
+            'quantity', s.quantity,
+            'purchasePrice', s.purchase_price,
+            'purchaseDate', s.purchase_date
+          )
+        ) as stocks
+      FROM users u
+      JOIN user_stocks s ON u.id = s.user_id
+      WHERE u.username LIKE '%(%)'
+      GROUP BY u.id, u.username
+      ORDER BY u.username
+    `;
+    
+    console.log('Politician query result:', politicianResult);
+    
+    // Combine results, ensuring no duplicates
+    const combinedResults = [...result];
+    
+    // Add politicians that might be missing
+    for (const politician of politicianResult) {
+      if (!combinedResults.find(user => user.id === politician.id)) {
+        combinedResults.push(politician);
+      }
+    }
+    
+    console.log('Combined results count:', combinedResults.length);
+    
     // Collect all unique stock symbols across all users
     const allSymbols = new Set<string>();
-    for (const user of result) {
+    for (const user of combinedResults) {
       if (user.stocks && Array.isArray(user.stocks)) {
         for (const stock of user.stocks) {
           if (stock.symbol) {
@@ -118,12 +153,12 @@ export async function GET() {
     }
     
     // Process the results to calculate gains
-    const leaderboardData = result.map((user: Record<string, any>) => {
+    const leaderboardData = combinedResults.map((user: Record<string, any>) => {
       console.log('Processing user:', user.name, 'with stocks:', user.stocks ? (Array.isArray(user.stocks) ? user.stocks.length : 'non-array') : 'none');
       
-      // Skip users with no stocks
+      // Handle users with no stocks
       if (!user.stocks || !Array.isArray(user.stocks) || user.stocks.length === 0) {
-        console.log('Skipping user:', user.name, 'because they have no stocks');
+        console.log('User has no stocks:', user.name);
         return {
           id: user.id,
           name: user.name,
@@ -181,7 +216,10 @@ export async function GET() {
         topGainerPercentage,
         currentWorth: totalCurrentWorth
       };
-    });
+    }).filter(user => user.name); // Filter out any users with no name
+    
+    // Sort by total gain in descending order
+    leaderboardData.sort((a, b) => b.currentWorth - a.currentWorth);
     
     return NextResponse.json(leaderboardData);
   } catch (error) {
