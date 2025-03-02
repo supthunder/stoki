@@ -1,10 +1,13 @@
-import { sql } from '@vercel/postgres';
+import { createClient } from '@vercel/postgres';
+
+// Create a client with connection pooling
+const db = createClient();
 
 // Initialize the database by creating tables if they don't exist
 export async function initializeDb() {
   try {
     // Create users table
-    await sql`
+    await db.sql`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         username VARCHAR(255) UNIQUE NOT NULL,
@@ -13,7 +16,7 @@ export async function initializeDb() {
     `;
 
     // Create stocks table
-    await sql`
+    await db.sql`
       CREATE TABLE IF NOT EXISTS user_stocks (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -36,7 +39,7 @@ export async function initializeDb() {
 // User functions
 export async function createUser(username: string) {
   try {
-    const result = await sql`
+    const result = await db.sql`
       INSERT INTO users (username)
       VALUES (${username})
       ON CONFLICT (username) DO NOTHING
@@ -45,7 +48,7 @@ export async function createUser(username: string) {
     
     if (result.rows.length === 0) {
       // User already exists, fetch the existing user
-      const existingUser = await sql`
+      const existingUser = await db.sql`
         SELECT id, username FROM users WHERE username = ${username}
       `;
       return existingUser.rows[0];
@@ -60,7 +63,7 @@ export async function createUser(username: string) {
 
 export async function getUserByUsername(username: string) {
   try {
-    const result = await sql`
+    const result = await db.sql`
       SELECT id, username FROM users WHERE username = ${username}
     `;
     return result.rows[0] || null;
@@ -79,7 +82,7 @@ export async function addStockToUser(
   purchasePrice: number
 ) {
   try {
-    const result = await sql`
+    const result = await db.sql`
       INSERT INTO user_stocks (user_id, symbol, company_name, quantity, purchase_price)
       VALUES (${userId}, ${symbol}, ${companyName}, ${quantity}, ${purchasePrice})
       ON CONFLICT (user_id, symbol) 
@@ -97,7 +100,7 @@ export async function addStockToUser(
 
 export async function getUserStocks(userId: number) {
   try {
-    const result = await sql`
+    const result = await db.sql`
       SELECT id, symbol, company_name, quantity, purchase_price, purchase_date
       FROM user_stocks
       WHERE user_id = ${userId}
@@ -117,10 +120,10 @@ export async function updateStockQuantity(
   try {
     if (newQuantity <= 0) {
       // Delete the stock if quantity is 0 or negative
-      await sql`DELETE FROM user_stocks WHERE id = ${stockId}`;
+      await db.sql`DELETE FROM user_stocks WHERE id = ${stockId}`;
       return null;
     } else {
-      const result = await sql`
+      const result = await db.sql`
         UPDATE user_stocks
         SET quantity = ${newQuantity}
         WHERE id = ${stockId}

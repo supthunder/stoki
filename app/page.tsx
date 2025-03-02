@@ -44,31 +44,9 @@ export default function Home() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="border rounded-lg p-6">
-            <h2 className="text-2xl font-semibold mb-4">Top Gainers</h2>
-            <div className="space-y-3">
-              <p>Coming soon...</p>
-            </div>
-          </div>
-          
-          <div className="border rounded-lg p-6">
-            <h2 className="text-2xl font-semibold mb-4">Your Portfolio</h2>
-            <div className="space-y-3">
-              {user ? (
-                <p>Your stocks will appear here</p>
-              ) : (
-                <p>Login to view your portfolio</p>
-              )}
-            </div>
-          </div>
-          
-          <div className="border rounded-lg p-6">
-            <h2 className="text-2xl font-semibold mb-4">Leaderboard</h2>
-            <div className="space-y-3">
-              <UserLeaderboard />
-            </div>
-          </div>
+        {/* Single leaderboard layout */}
+        <div className="w-full">
+          <UserLeaderboard />
         </div>
       </div>
     </main>

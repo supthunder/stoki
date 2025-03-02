@@ -10,7 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -119,101 +119,94 @@ export function UserLeaderboard() {
   if (error) {
     return (
       <Card>
-        <CardContent className="pt-6">
-          <div className="text-center text-red-500">
-            <p>{error}</p>
-            <button 
-              onClick={fetchLeaderboardData} 
-              className="mt-2 text-primary hover:underline"
-            >
-              Retry
-            </button>
-          </div>
-        </CardContent>
+        <div className="p-4 text-center text-red-500">
+          <p>{error}</p>
+          <button 
+            onClick={fetchLeaderboardData} 
+            className="mt-2 text-primary hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       </Card>
     );
   }
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-md font-medium">Investor Rankings</CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[60px]">Rank</TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Total Gain</TableHead>
-              <TableHead>Top Stock</TableHead>
-              <TableHead className="text-right">Worth</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              // Loading skeletons
-              Array(5).fill(0).map((_, index) => (
-                <TableRow key={`skeleton-${index}`}>
-                  <TableCell><Skeleton className="h-4 w-6" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                  <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[100px]">Rank</TableHead>
+            <TableHead>User</TableHead>
+            <TableHead>Total Gain</TableHead>
+            <TableHead>Top Gainer</TableHead>
+            <TableHead className="text-right">Current Worth</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            // Loading skeletons
+            Array(5).fill(0).map((_, index) => (
+              <TableRow key={`skeleton-${index}`}>
+                <TableCell><Skeleton className="h-4 w-6" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                <TableCell><Skeleton className="h-8 w-20" /></TableCell>
+                <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+              </TableRow>
+            ))
+          ) : (
+            users
+              .sort((a, b) => b.totalGain - a.totalGain)
+              .map((user, index) => (
+                <TableRow key={user.id} className={highlightCurrentUser(user.id)}>
+                  <TableCell className="font-medium">{index + 1}</TableCell>
+                  <TableCell>{user.name}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span
+                        className={
+                          user.totalGain >= 0 ? "text-green-600" : "text-red-600"
+                        }
+                      >
+                        ${user.totalGain.toLocaleString()}
+                      </span>
+                      <span
+                        className={`text-xs ${
+                          user.totalGainPercentage >= 0
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {user.totalGainPercentage >= 0 ? "+" : ""}
+                        {user.totalGainPercentage}%
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{user.topGainer}</Badge>
+                      <span
+                        className={`text-xs ${
+                          user.topGainerPercentage >= 0
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {user.topGainerPercentage >= 0 ? "+" : ""}
+                        {user.topGainerPercentage}%
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${user.currentWorth.toLocaleString()}
+                  </TableCell>
                 </TableRow>
               ))
-            ) : (
-              users
-                .sort((a, b) => b.totalGain - a.totalGain)
-                .map((user, index) => (
-                  <TableRow key={user.id} className={highlightCurrentUser(user.id)}>
-                    <TableCell className="font-medium">{index + 1}</TableCell>
-                    <TableCell>{user.name}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span
-                          className={
-                            user.totalGain >= 0 ? "text-green-600" : "text-red-600"
-                          }
-                        >
-                          ${user.totalGain.toLocaleString()}
-                        </span>
-                        <span
-                          className={`text-xs ${
-                            user.totalGainPercentage >= 0
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {user.totalGainPercentage >= 0 ? "+" : ""}
-                          {user.totalGainPercentage}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{user.topGainer}</Badge>
-                        <span
-                          className={`text-xs ${
-                            user.topGainerPercentage >= 0
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {user.topGainerPercentage >= 0 ? "+" : ""}
-                          {user.topGainerPercentage}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      ${user.currentWorth.toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                ))
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
+          )}
+        </TableBody>
+      </Table>
     </Card>
   );
 } 
