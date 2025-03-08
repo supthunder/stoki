@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseCurrency } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,13 +31,37 @@ interface MobileLeaderboardProps {
   users: LeaderboardUser[];
   onUserClick: (user: LeaderboardUser) => void;
   currentUserId?: number;
+  defaultTimeFrame?: TimeFrame;
+  onTimeFrameChange?: (timeFrame: TimeFrame) => void;
 }
 
 type TimeFrame = "total" | "weekly" | "daily";
 
-export function MobileLeaderboard({ users, onUserClick, currentUserId }: MobileLeaderboardProps) {
-  const [timeFrame, setTimeFrame] = useState<TimeFrame>("total");
+export function MobileLeaderboard({ 
+  users, 
+  onUserClick, 
+  currentUserId,
+  defaultTimeFrame = "total",
+  onTimeFrameChange
+}: MobileLeaderboardProps) {
+  const [timeFrame, setTimeFrame] = useState<TimeFrame>(defaultTimeFrame);
   
+  // Update local state when defaultTimeFrame changes
+  useEffect(() => {
+    setTimeFrame(defaultTimeFrame);
+  }, [defaultTimeFrame]);
+
+  // Handle time frame change
+  const handleTimeFrameChange = (value: string) => {
+    const newTimeFrame = value as TimeFrame;
+    setTimeFrame(newTimeFrame);
+    
+    // Notify parent component if callback is provided
+    if (onTimeFrameChange) {
+      onTimeFrameChange(newTimeFrame);
+    }
+  };
+
   // Helper function to highlight the current user
   const highlightCurrentUser = (userId: number) => {
     return userId === currentUserId ? "border-primary" : "";
@@ -68,12 +92,34 @@ export function MobileLeaderboard({ users, onUserClick, currentUserId }: MobileL
     }
   };
 
+  // Sort users based on the selected time frame
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      let aValue, bValue;
+      
+      // Sort based on the selected time frame
+      if (timeFrame === "daily") {
+        aValue = parseCurrency(a.dailyGain);
+        bValue = parseCurrency(b.dailyGain);
+      } else if (timeFrame === "weekly") {
+        aValue = parseCurrency(a.weeklyGain);
+        bValue = parseCurrency(b.weeklyGain);
+      } else {
+        aValue = parseCurrency(a.totalGain);
+        bValue = parseCurrency(b.totalGain);
+      }
+      
+      // Sort in descending order (highest gain first)
+      return bValue - aValue;
+    });
+  }, [users, timeFrame]);
+
   return (
     <div className="space-y-4">
       <Tabs 
         defaultValue="total" 
         value={timeFrame} 
-        onValueChange={(value) => setTimeFrame(value as TimeFrame)}
+        onValueChange={handleTimeFrameChange}
         className="w-full"
       >
         <TabsList className="grid w-full grid-cols-3 mb-4">
@@ -84,7 +130,7 @@ export function MobileLeaderboard({ users, onUserClick, currentUserId }: MobileL
       </Tabs>
 
       <div className="space-y-3">
-        {users.map((user, index) => {
+        {sortedUsers.map((user, index) => {
           const { gain, percentage, isPositive } = getGainData(user);
           
           return (

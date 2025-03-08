@@ -32,9 +32,9 @@ async function calculateHistoricalValue(stocks: StockRecord[], date: Date, force
   
   // Try to get from cache first (unless it's today's data and we want to force refresh)
   if (!forceRefresh || !isToday) {
-    const cachedValue = await getCachedData(cacheKey);
+    const cachedValue = await getCachedData<number>(cacheKey);
     if (cachedValue !== null) {
-      return cachedValue as number;
+      return cachedValue;
     }
   }
   
@@ -88,7 +88,7 @@ const isCacheExpired = async (userId: number, days: number): Promise<boolean> =>
   
   try {
     // Get the timestamp when the data was last cached
-    const timestamp = await getCachedData(cacheTimestampKey);
+    const timestamp = await getCachedData<string>(cacheTimestampKey);
     
     if (!timestamp) {
       return true; // No timestamp, cache is considered expired

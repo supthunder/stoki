@@ -339,6 +339,8 @@ export function UserLeaderboard() {
               users={sortedUsers} 
               onUserClick={handleUserClick} 
               currentUserId={user?.id}
+              defaultTimeFrame={timeFrame}
+              onTimeFrameChange={handleTimeFrameChange}
             />
           ) : (
             // Desktop leaderboard with tabs
