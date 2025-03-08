@@ -18,7 +18,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid } from "recharts";
 
 // Types for user data
 type UserData = {
@@ -57,6 +57,7 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Fetch user and opponent data
   const fetchData = async (forceRefresh = false) => {
@@ -88,74 +89,92 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
       setUserData(currentUserData);
       setOpponentData(opponentUserData);
       
-      // Fetch real performance data for both users
-      const days = 30; // Get 30 days of data for a good comparison
-      const forceParam = forceRefresh ? '&force=true' : '';
-      
-      // Fetch current user's performance data
-      const userPerformanceResponse = await fetch(`/api/portfolio/performance?userId=${user.id}&days=${days}${forceParam}`);
-      
-      // Fetch opponent's performance data
-      const opponentPerformanceResponse = await fetch(`/api/portfolio/performance?userId=${opponentId}&days=${days}${forceParam}`);
-      
-      if (userPerformanceResponse.ok && opponentPerformanceResponse.ok) {
-        const userPerformanceData = await userPerformanceResponse.json();
-        const opponentPerformanceData = await opponentPerformanceResponse.json();
+      // Try to fetch real performance data first
+      try {
+        const days = 30; // Get 30 days of data for comparison (1 month)
+        const forceParam = forceRefresh ? '&force=true' : '';
         
-        console.log("User performance data:", userPerformanceData);
-        console.log("Opponent performance data:", opponentPerformanceData);
+        // Fetch current user's performance data
+        const userPerformanceResponse = await fetch(`/api/portfolio/performance?userId=${user.id}&days=${days}${forceParam}`);
         
-        // Combine the performance data from both users
-        if (userPerformanceData.performance && opponentPerformanceData.performance) {
-          // Get all unique dates from both datasets
-          const allDates = new Set([
-            ...userPerformanceData.performance.map((item: { date: string }) => item.date),
-            ...opponentPerformanceData.performance.map((item: { date: string }) => item.date)
-          ]);
+        // Fetch opponent's performance data
+        const opponentPerformanceResponse = await fetch(`/api/portfolio/performance?userId=${opponentId}&days=${days}${forceParam}`);
+        
+        if (userPerformanceResponse.ok && opponentPerformanceResponse.ok) {
+          const userPerformanceData = await userPerformanceResponse.json();
+          const opponentPerformanceData = await opponentPerformanceResponse.json();
           
-          // Sort dates chronologically
-          const sortedDates = Array.from(allDates).sort((a, b) => 
-            new Date(a).getTime() - new Date(b).getTime()
-          );
+          console.log("User performance data:", userPerformanceData);
+          console.log("Opponent performance data:", opponentPerformanceData);
           
-          console.log("Sorted dates:", sortedDates);
+          // Check if we have enough data points
+          const hasEnoughUserData = userPerformanceData.performance && userPerformanceData.performance.length >= 3;
+          const hasEnoughOpponentData = opponentPerformanceData.performance && opponentPerformanceData.performance.length >= 3;
           
-          // Create combined performance data
-          const combinedData: PerformanceData[] = [];
-          
-          sortedDates.forEach(date => {
-            const userPoint = userPerformanceData.performance.find((d: { date: string }) => d.date === date);
-            const opponentPoint = opponentPerformanceData.performance.find((d: { date: string }) => d.date === date);
+          if (hasEnoughUserData && hasEnoughOpponentData) {
+            // Calculate percentage change for each user
+            const calculatePercentageChange = (data: any[]) => {
+              if (!data || data.length === 0) return [];
+              
+              const firstValue = data[0].value;
+              return data.map(item => ({
+                date: item.date,
+                value: firstValue > 0 ? ((item.value / firstValue) - 1) * 100 : 0
+              }));
+            };
             
-            // Ensure we have valid numeric values
-            const userValue = userPoint?.value || 0;
-            const opponentValue = opponentPoint?.value || 0;
+            const userPercentageData = calculatePercentageChange(userPerformanceData.performance);
+            const opponentPercentageData = calculatePercentageChange(opponentPerformanceData.performance);
             
-            if (userPoint || opponentPoint) {
+            console.log("User percentage data:", userPercentageData);
+            console.log("Opponent percentage data:", opponentPercentageData);
+            
+            // Get all unique dates
+            const allDates = new Set([
+              ...userPercentageData.map((item: { date: string }) => item.date),
+              ...opponentPercentageData.map((item: { date: string }) => item.date)
+            ]);
+            
+            // Sort dates chronologically
+            const sortedDates = Array.from(allDates).sort((a, b) => 
+              new Date(a).getTime() - new Date(b).getTime()
+            );
+            
+            // Create combined performance data
+            const combinedData: PerformanceData[] = [];
+            
+            sortedDates.forEach(date => {
+              const userPoint = userPercentageData.find((d: { date: string }) => d.date === date);
+              const opponentPoint = opponentPercentageData.find((d: { date: string }) => d.date === date);
+              
+              // Ensure we have valid numeric values
+              const userValue = userPoint?.value || 0;
+              const opponentValue = opponentPoint?.value || 0;
+              
               combinedData.push({
                 date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                user: Number(userValue),
-                opponent: Number(opponentValue)
+                user: Number(userValue.toFixed(2)),
+                opponent: Number(opponentValue.toFixed(2))
               });
+            });
+            
+            console.log("Combined performance data:", combinedData);
+            
+            // If we have data, set it
+            if (combinedData.length > 0) {
+              setPerformanceData(combinedData);
+            } else {
+              setError("No performance data available");
             }
-          });
-          
-          console.log("Combined performance data:", combinedData);
-          
-          // If we have data, set it
-          if (combinedData.length > 0) {
-            setPerformanceData(combinedData);
           } else {
-            console.error("No performance data points found for comparison");
-            setError("No performance data available for comparison");
+            setError("Insufficient performance data");
           }
         } else {
-          console.error("Missing performance data in API response");
-          setError("Could not load performance data");
+          setError("Failed to fetch performance data");
         }
-      } else {
-        console.error("Failed to fetch performance data from API");
-        setError("Failed to load performance data");
+      } catch (error) {
+        console.error("Error fetching performance data:", error);
+        setError("Error processing performance data");
       }
       
     } catch (err) {
@@ -172,6 +191,22 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
       fetchData();
     }
   }, [user, opponentId]);
+
+  // Detect mobile devices
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    // Check on mount
+    checkMobile();
+    
+    // Add resize listener
+    window.addEventListener('resize', checkMobile);
+    
+    // Clean up
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Format currency
   const formatCurrency = (value: string) => {
@@ -391,54 +426,63 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
           </div>
 
           {/* Performance Chart */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center justify-between">
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-1 px-4 pt-3">
+              <CardTitle className="text-sm flex items-center justify-between">
                 <div className="flex items-center">
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  Performance Comparison
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  30-Day Performance Comparison
                 </div>
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  className="h-6 w-6" 
+                  className="h-5 w-5" 
                   onClick={() => fetchData(true)}
                   disabled={refreshing}
                 >
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
                 </Button>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4">
-              <div className="h-[200px]">
+            <CardContent className={`${isMobile ? 'p-2' : 'p-4'}`}>
+              <div className={`${isMobile ? 'h-[160px]' : 'h-[200px]'}`}>
                 {performanceData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={performanceData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <LineChart data={performanceData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.2} />
                       <XAxis 
                         dataKey="date" 
                         axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: 'hsl(var(--foreground))' }}
+                        tickLine={false}
+                        tick={{ fill: '#aaa', fontSize: 9 }}
+                        tickCount={isMobile ? 3 : 5}
+                        minTickGap={20}
                       />
                       <YAxis 
                         axisLine={false} 
                         tickLine={false} 
-                        tickFormatter={(value) => `$${value.toLocaleString()}`} 
-                        width={60}
-                        tick={{ fill: 'hsl(var(--foreground))' }}
-                        domain={['auto', 'auto']}
+                        tickFormatter={(value) => `${value.toFixed(0)}%`} 
+                        width={30}
+                        tick={{ fill: '#aaa', fontSize: 9 }}
+                        domain={['dataMin - 5', 'dataMax + 5']}
+                        tickCount={3}
+                        padding={{ top: 10, bottom: 10 }}
                       />
                       <Tooltip
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length >= 2) {
                             return (
-                              <div className="bg-popover border border-border rounded-md shadow-md p-2 text-xs">
+                              <div className="bg-black/90 border-0 rounded-md shadow-md p-1.5 text-[10px]">
                                 <p className="font-medium">{label}</p>
-                                <p className="text-[hsl(var(--chart-1))]">
-                                  You: ${payload[0]?.value?.toLocaleString(undefined, {maximumFractionDigits: 2}) || '0'}
+                                <p style={{ color: '#3b82f6' }}>
+                                  You: {payload[0]?.value !== undefined && typeof payload[0].value === 'number' 
+                                    ? payload[0].value.toFixed(2) 
+                                    : '0'}%
                                 </p>
-                                <p className="text-[hsl(var(--chart-2))]">
-                                  {opponentData?.username}: ${payload[1]?.value?.toLocaleString(undefined, {maximumFractionDigits: 2}) || '0'}
+                                <p style={{ color: '#10b981' }}>
+                                  {opponentData?.username}: {payload[1]?.value !== undefined && typeof payload[1].value === 'number' 
+                                    ? payload[1].value.toFixed(2) 
+                                    : '0'}%
                                 </p>
                               </div>
                             );
@@ -446,40 +490,57 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
                           return null;
                         }}
                       />
+                      <ReferenceLine y={0} stroke="#666" strokeDasharray="3 3" />
                       <Line
                         type="monotone"
                         dataKey="user"
-                        stroke="hsl(var(--chart-1))"
+                        name="Your Performance"
+                        stroke="#3b82f6"
                         strokeWidth={3}
-                        dot={{ fill: 'hsl(var(--chart-1))', r: 4 }}
-                        activeDot={{ r: 6, fill: 'hsl(var(--chart-1))' }}
-                        isAnimationActive={true}
+                        dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }}
+                        activeDot={{ r: 5, fill: "#3b82f6", strokeWidth: 0 }}
+                        isAnimationActive={false}
+                        connectNulls={true}
                       />
                       <Line
                         type="monotone"
                         dataKey="opponent"
-                        stroke="hsl(var(--chart-2))"
+                        name="Opponent Performance"
+                        stroke="#10b981"
                         strokeWidth={3}
-                        dot={{ fill: 'hsl(var(--chart-2))', r: 4 }}
-                        activeDot={{ r: 6, fill: 'hsl(var(--chart-2))' }}
-                        isAnimationActive={true}
+                        dot={{ r: 3, fill: "#10b981", strokeWidth: 0 }}
+                        activeDot={{ r: 5, fill: "#10b981", strokeWidth: 0 }}
+                        isAnimationActive={false}
+                        connectNulls={true}
                       />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-muted-foreground text-sm">Loading performance data...</p>
+                  <div className="flex flex-col items-center justify-center h-full gap-2">
+                    <p className="text-muted-foreground text-xs">
+                      {error ? error : "Loading data..."}
+                    </p>
+                    {error && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => fetchData(true)}
+                        className="text-xs h-7 px-2"
+                      >
+                        Retry
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
-              {/* Add a legend */}
-              <div className="flex justify-center mt-2 gap-4 text-xs">
+              {/* Simplified legend */}
+              <div className="flex justify-center gap-3 text-[10px] text-muted-foreground mt-0">
                 <div className="flex items-center">
-                  <div className="w-3 h-3 rounded-full bg-[hsl(var(--chart-1))] mr-1"></div>
+                  <div className="w-2 h-2 rounded-full bg-[#3b82f6] mr-1"></div>
                   <span>You</span>
                 </div>
                 <div className="flex items-center">
-                  <div className="w-3 h-3 rounded-full bg-[hsl(var(--chart-2))] mr-1"></div>
+                  <div className="w-2 h-2 rounded-full bg-[#10b981] mr-1"></div>
                   <span>{opponentData?.username}</span>
                 </div>
               </div>
