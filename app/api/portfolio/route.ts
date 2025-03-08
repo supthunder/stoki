@@ -39,12 +39,22 @@ export async function GET(request: Request) {
   try {
     // Get the userId from the query parameters
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
+    const userIdParam = searchParams.get("userId");
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    if (!userId) {
+    if (!userIdParam) {
       return NextResponse.json(
         { error: "User ID is required" },
+        { status: 400 }
+      );
+    }
+
+    // Parse userId as an integer
+    const userId = parseInt(userIdParam, 10);
+    
+    if (isNaN(userId)) {
+      return NextResponse.json(
+        { error: "Invalid User ID" },
         { status: 400 }
       );
     }
@@ -274,6 +284,36 @@ export async function GET(request: Request) {
     const totalGainPercentage = totalPurchaseValue > 0 ? (totalGain / totalPurchaseValue) * 100 : 0;
     
     console.log(`Portfolio summary: Total Current: ${totalCurrentValue}, Total Purchase: ${totalPurchaseValue}, Total Gain: ${totalGain}`);
+
+    // Store the portfolio summary in the database
+    try {
+      await sql`
+        INSERT INTO portfolio_summaries (
+          user_id,
+          total_current_value,
+          total_purchase_value,
+          total_gain,
+          total_gain_percentage,
+          last_updated
+        ) VALUES (
+          ${userId},
+          ${totalCurrentValue},
+          ${totalPurchaseValue},
+          ${totalGain},
+          ${totalGainPercentage},
+          NOW()
+        )
+        ON CONFLICT (user_id) DO UPDATE SET
+          total_current_value = EXCLUDED.total_current_value,
+          total_purchase_value = EXCLUDED.total_purchase_value,
+          total_gain = EXCLUDED.total_gain,
+          total_gain_percentage = EXCLUDED.total_gain_percentage,
+          last_updated = EXCLUDED.last_updated
+      `;
+      console.log('Portfolio summary stored in database');
+    } catch (error) {
+      console.error('Error storing portfolio summary:', error);
+    }
     
     return NextResponse.json({
       stocks: portfolioData,

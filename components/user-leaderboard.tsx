@@ -106,14 +106,29 @@ export function UserLeaderboard() {
   const [viewingProfile, setViewingProfile] = useState(false);
 
   // Fetch leaderboard data
-  const fetchLeaderboardData = async (forceRefresh = false) => {
+  const fetchLeaderboardData = async (forceRefresh = false, updateDb = false) => {
     try {
       setLoading(true);
       setError(null);
       
-      const url = forceRefresh 
-        ? "/api/leaderboard?refresh=true" 
-        : "/api/leaderboard";
+      let url = "/api/leaderboard";
+      const params = new URLSearchParams();
+      
+      if (forceRefresh) {
+        params.append('refresh', 'true');
+      }
+      
+      if (updateDb) {
+        params.append('updateDb', 'true');
+      }
+      
+      // Add the current time frame to the request
+      params.append('timeFrame', timeFrame);
+      
+      // Append params to URL if there are any
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
       
       const response = await fetch(url);
       
@@ -156,36 +171,36 @@ export function UserLeaderboard() {
     // Get values based on sortColumn and timeFrame
     switch (sortColumn) {
       case "currentWorth":
-        aValue = parseCurrency(a.currentWorth);
-        bValue = parseCurrency(b.currentWorth);
+        aValue = a.currentWorth ? parseCurrency(a.currentWorth) : 0;
+        bValue = b.currentWorth ? parseCurrency(b.currentWorth) : 0;
         break;
       case "totalGain":
-        aValue = parseCurrency(a.totalGain);
-        bValue = parseCurrency(b.totalGain);
+        aValue = a.totalGain ? parseCurrency(a.totalGain) : 0;
+        bValue = b.totalGain ? parseCurrency(b.totalGain) : 0;
         break;
       case "dailyGain":
-        aValue = parseCurrency(a.dailyGain);
-        bValue = parseCurrency(b.dailyGain);
+        aValue = a.dailyGain ? parseCurrency(a.dailyGain) : 0;
+        bValue = b.dailyGain ? parseCurrency(b.dailyGain) : 0;
         break;
       case "weeklyGain":
-        aValue = parseCurrency(a.weeklyGain);
-        bValue = parseCurrency(b.weeklyGain);
+        aValue = a.weeklyGain ? parseCurrency(a.weeklyGain) : 0;
+        bValue = b.weeklyGain ? parseCurrency(b.weeklyGain) : 0;
         break;
       case "startingAmount":
-        aValue = parseCurrency(a.startingAmount);
-        bValue = parseCurrency(b.startingAmount);
+        aValue = a.startingAmount ? parseCurrency(a.startingAmount) : 0;
+        bValue = b.startingAmount ? parseCurrency(b.startingAmount) : 0;
         break;
       default:
         // Default sort based on the selected time frame
         if (timeFrame === "daily") {
-          aValue = parseCurrency(a.dailyGain);
-          bValue = parseCurrency(b.dailyGain);
+          aValue = a.dailyGain ? parseCurrency(a.dailyGain) : 0;
+          bValue = b.dailyGain ? parseCurrency(b.dailyGain) : 0;
         } else if (timeFrame === "weekly") {
-          aValue = parseCurrency(a.weeklyGain);
-          bValue = parseCurrency(b.weeklyGain);
+          aValue = a.weeklyGain ? parseCurrency(a.weeklyGain) : 0;
+          bValue = b.weeklyGain ? parseCurrency(b.weeklyGain) : 0;
         } else {
-          aValue = parseCurrency(a.totalGain);
-          bValue = parseCurrency(b.totalGain);
+          aValue = a.totalGain ? parseCurrency(a.totalGain) : 0;
+          bValue = b.totalGain ? parseCurrency(b.totalGain) : 0;
         }
     }
     
@@ -246,26 +261,29 @@ export function UserLeaderboard() {
     setViewingComparison(false);
   };
 
-  // Handle refresh button click
-  const handleRefresh = () => {
+  // Handle refresh with database update
+  const handleRefreshWithUpdate = async () => {
     setRefreshing(true);
-    fetchLeaderboardData(true).finally(() => {
-      setRefreshing(false);
-    });
+    await fetchLeaderboardData(true, true);
+    setRefreshing(false);
   };
 
-  // Handle tab change
+  // Handle refresh without database update
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchLeaderboardData(true, false);
+    setRefreshing(false);
+  };
+
+  // Handle time frame change
   const handleTimeFrameChange = (value: string) => {
     setTimeFrame(value as "total" | "weekly" | "daily");
     
-    // Update sort column based on time frame
-    if (value === "daily") {
-      setSortColumn("dailyGain");
-    } else if (value === "weekly") {
-      setSortColumn("weeklyGain");
-    } else {
-      setSortColumn("totalGain");
-    }
+    // Refresh data with database update when time frame changes
+    setRefreshing(true);
+    fetchLeaderboardData(true, true).finally(() => {
+      setRefreshing(false);
+    });
   };
 
   // If viewing profile, show the profile component
@@ -308,24 +326,26 @@ export function UserLeaderboard() {
         <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold`}>
           {isMobile ? "Leaderboard" : "Stock Trading Leaderboard"}
         </h2>
-        <Button 
-          variant="outline" 
-          size={isMobile ? "sm" : "default"}
-          onClick={handleRefresh} 
-          disabled={refreshing}
-        >
-          {refreshing ? (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </>
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleRefreshWithUpdate}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+            Update All
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -469,20 +489,20 @@ export function UserLeaderboard() {
                             <div className="flex flex-col whitespace-nowrap">
                               <span
                                 className={
-                                  parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
+                                  user.dailyGain && parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
                                 }
                               >
-                                {user.dailyGain}
+                                {user.dailyGain || "$0.00"}
                               </span>
                               <span
                                 className={`text-xs ${
-                                  parseFloat(user.dailyGainPercentage) >= 0
+                                  user.dailyGainPercentage && parseFloat(user.dailyGainPercentage) >= 0
                                     ? "text-green-600"
                                     : "text-red-600"
                                 }`}
                               >
-                                {parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}
-                                {user.dailyGainPercentage}%
+                                {user.dailyGainPercentage && parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}
+                                {user.dailyGainPercentage || "0"}%
                               </span>
                             </div>
                           </TableCell>
@@ -490,20 +510,20 @@ export function UserLeaderboard() {
                             <div className="flex flex-col whitespace-nowrap">
                               <span
                                 className={
-                                  parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
+                                  user.weeklyGain && parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
                                 }
                               >
-                                {user.weeklyGain}
+                                {user.weeklyGain || "$0.00"}
                               </span>
                               <span
                                 className={`text-xs ${
-                                  parseFloat(user.weeklyGainPercentage) >= 0
+                                  user.weeklyGainPercentage && parseFloat(user.weeklyGainPercentage) >= 0
                                     ? "text-green-600"
                                     : "text-red-600"
                                 }`}
                               >
-                                {parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}
-                                {user.weeklyGainPercentage}%
+                                {user.weeklyGainPercentage && parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}
+                                {user.weeklyGainPercentage || "0"}%
                               </span>
                             </div>
                           </TableCell>
@@ -511,20 +531,20 @@ export function UserLeaderboard() {
                             <div className="flex flex-col whitespace-nowrap">
                               <span
                                 className={
-                                  parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
+                                  user.totalGain && parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
                                 }
                               >
-                                {user.totalGain}
+                                {user.totalGain || "$0.00"}
                               </span>
                               <span
                                 className={`text-xs ${
-                                  parseFloat(user.totalGainPercentage) >= 0
+                                  user.totalGainPercentage && parseFloat(user.totalGainPercentage) >= 0
                                     ? "text-green-600"
                                     : "text-red-600"
                                 }`}
                               >
-                                {parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}
-                                {user.totalGainPercentage}%
+                                {user.totalGainPercentage && parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}
+                                {user.totalGainPercentage || "0"}%
                               </span>
                             </div>
                           </TableCell>

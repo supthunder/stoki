@@ -13,52 +13,59 @@ type AddStockRequest = {
 
 export async function POST(request: Request) {
   try {
-    // Parse the request body
-    const body: AddStockRequest = await request.json();
-    
-    // Validate required fields
-    if (!body.userId || !body.symbol || !body.companyName || !body.quantity || !body.purchasePrice) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-    
-    // Set default purchase date to today if not provided
-    const purchaseDate = body.purchaseDate || new Date().toISOString().split('T')[0];
-    
+    const body = await request.json();
+    const { userId, symbol, companyName, quantity, purchasePrice, purchaseDate } = body;
+
     const sql = createSqlClient();
-    
-    // Insert the stock into the database
-    const result = await sql`
-      INSERT INTO user_stocks (
-        user_id, 
-        symbol, 
-        company_name, 
-        quantity, 
-        purchase_price, 
-        purchase_date
-      )
-      VALUES (
-        ${body.userId}, 
-        ${body.symbol}, 
-        ${body.companyName}, 
-        ${body.quantity}, 
-        ${body.purchasePrice}, 
-        ${purchaseDate}
-      )
-      RETURNING id, symbol, company_name as "companyName", quantity, purchase_price as "purchasePrice", purchase_date as "purchaseDate"
+
+    // First check if the stock already exists for this user
+    const existingStock = await sql`
+      SELECT id, quantity, purchase_price
+      FROM user_stocks
+      WHERE user_id = ${userId} AND symbol = ${symbol}
     `;
-    
-    if (result.length === 0) {
-      throw new Error('Failed to add stock');
+
+    if (existingStock.length > 0) {
+      // If stock exists, update the quantity and calculate new average purchase price
+      const currentStock = existingStock[0];
+      const totalCurrentValue = currentStock.quantity * currentStock.purchase_price;
+      const newValue = quantity * purchasePrice;
+      const totalQuantity = currentStock.quantity + quantity;
+      const averagePurchasePrice = (totalCurrentValue + newValue) / totalQuantity;
+
+      await sql`
+        UPDATE user_stocks
+        SET 
+          quantity = ${totalQuantity},
+          purchase_price = ${averagePurchasePrice}
+        WHERE id = ${currentStock.id}
+      `;
+    } else {
+      // If stock doesn't exist, insert new record
+      await sql`
+        INSERT INTO user_stocks (
+          user_id,
+          symbol,
+          company_name,
+          quantity,
+          purchase_price,
+          purchase_date
+        ) VALUES (
+          ${userId},
+          ${symbol},
+          ${companyName},
+          ${quantity},
+          ${purchasePrice},
+          ${purchaseDate}
+        )
+      `;
     }
-    
-    return NextResponse.json(result[0]);
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error adding stock to portfolio:', error);
+    console.error("Error adding stock to portfolio:", error);
     return NextResponse.json(
-      { error: 'Failed to add stock to portfolio' },
+      { error: "Failed to add stock to portfolio" },
       { status: 500 }
     );
   }

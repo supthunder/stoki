@@ -65,6 +65,7 @@ export function MobileLeaderboard({
     
     // Notify parent component if callback is provided
     if (onTimeFrameChange) {
+      console.log(`Mobile leaderboard changing time frame to: ${newTimeFrame}`);
       onTimeFrameChange(newTimeFrame);
     }
   };
@@ -79,22 +80,22 @@ export function MobileLeaderboard({
     switch (timeFrame) {
       case "daily":
         return {
-          gain: user.dailyGain,
-          percentage: user.dailyGainPercentage,
-          isPositive: parseCurrency(user.dailyGain) >= 0
+          gain: user.dailyGain || "$0.00",
+          percentage: user.dailyGainPercentage || "0",
+          isPositive: user.dailyGain ? parseCurrency(user.dailyGain) >= 0 : true
         };
       case "weekly":
         return {
-          gain: user.weeklyGain,
-          percentage: user.weeklyGainPercentage,
-          isPositive: parseCurrency(user.weeklyGain) >= 0
+          gain: user.weeklyGain || "$0.00",
+          percentage: user.weeklyGainPercentage || "0",
+          isPositive: user.weeklyGain ? parseCurrency(user.weeklyGain) >= 0 : true
         };
       case "total":
       default:
         return {
-          gain: user.totalGain,
-          percentage: user.totalGainPercentage,
-          isPositive: parseCurrency(user.totalGain) >= 0
+          gain: user.totalGain || "$0.00",
+          percentage: user.totalGainPercentage || "0",
+          isPositive: user.totalGain ? parseCurrency(user.totalGain) >= 0 : true
         };
     }
   };
@@ -106,14 +107,14 @@ export function MobileLeaderboard({
       
       // Sort based on the selected time frame
       if (timeFrame === "daily") {
-        aValue = parseFloat(a.dailyGainPercentage);
-        bValue = parseFloat(b.dailyGainPercentage);
+        aValue = a.dailyGainPercentage ? parseFloat(a.dailyGainPercentage) : 0;
+        bValue = b.dailyGainPercentage ? parseFloat(b.dailyGainPercentage) : 0;
       } else if (timeFrame === "weekly") {
-        aValue = parseFloat(a.weeklyGainPercentage);
-        bValue = parseFloat(b.weeklyGainPercentage);
+        aValue = a.weeklyGainPercentage ? parseFloat(a.weeklyGainPercentage) : 0;
+        bValue = b.weeklyGainPercentage ? parseFloat(b.weeklyGainPercentage) : 0;
       } else {
-        aValue = parseFloat(a.totalGainPercentage);
-        bValue = parseFloat(b.totalGainPercentage);
+        aValue = a.totalGainPercentage ? parseFloat(a.totalGainPercentage) : 0;
+        bValue = b.totalGainPercentage ? parseFloat(b.totalGainPercentage) : 0;
       }
       
       // Sort in descending order (highest percentage first)

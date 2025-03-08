@@ -142,66 +142,64 @@ export async function GET(request: Request) {
     // Check if we should bypass the cache for fresh data
     const { searchParams } = new URL(request.url);
     const forceRefresh = searchParams.get('refresh') === 'true';
+    const updateDb = searchParams.get('updateDb') === 'true';
+    const timeFrame = searchParams.get('timeFrame') || 'total'; // Get the time frame parameter
+    
+    // Create a cache key that includes the time frame
+    const cacheKey = `leaderboard:data:${timeFrame}`;
     
     // Try to get cached leaderboard data first (short TTL to ensure fresh data)
     if (!forceRefresh) {
-      const cachedLeaderboard = await getCachedData<any[]>('leaderboard:data');
+      const cachedLeaderboard = await getCachedData<any[]>(cacheKey);
       if (cachedLeaderboard) {
-        console.log('Returning cached leaderboard data');
+        console.log(`Returning cached leaderboard data for ${timeFrame} time frame`);
         return NextResponse.json(cachedLeaderboard);
       }
     }
 
     // If forceRefresh is true, we'll skip the cache and fetch fresh data
-    console.log(forceRefresh ? 'Force refreshing leaderboard data' : 'Fetching fresh leaderboard data');
+    console.log(forceRefresh ? `Force refreshing leaderboard data for ${timeFrame} time frame` : `Fetching fresh leaderboard data for ${timeFrame} time frame`);
 
     const sql = createSqlClient();
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     const sevenDaysAgo = new Date(today.getTime() - (7 * ONE_DAY_MS));
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    const oneDayAgo = new Date(today.getTime() - ONE_DAY_MS);
+    const oneDayAgoStr = oneDayAgo.toISOString().split('T')[0];
     
     // Get all users with their portfolio data
     const results = await sql`
-      WITH user_portfolios AS (
+      WITH portfolio_data AS (
         SELECT 
           u.id,
           u.username,
           u.avatar,
-          s.symbol,
-          s.quantity,
-          s.purchase_price,
-          s.purchase_date
+          ps.total_current_value as current_worth,
+          ps.total_purchase_value as purchase_value,
+          ps.total_gain,
+          ps.total_gain_percentage,
+          ps.daily_gain,
+          ps.daily_gain_percentage,
+          ps.weekly_gain,
+          ps.weekly_gain_percentage,
+          ps.last_updated,
+          json_agg(
+            json_build_object(
+              'symbol', s.symbol,
+              'quantity', s.quantity,
+              'purchasePrice', s.purchase_price,
+              'purchaseDate', s.purchase_date
+            )
+          ) FILTER (WHERE s.symbol IS NOT NULL) as stocks
         FROM users u
+        LEFT JOIN portfolio_summaries ps ON u.id = ps.user_id
         LEFT JOIN user_stocks s ON u.id = s.user_id
-      ),
-      user_totals AS (
-        SELECT 
-          id,
-          username,
-          avatar,
-          SUM(quantity * purchase_price) as total_investment
-        FROM user_portfolios
-        GROUP BY id, username, avatar
-        ORDER BY total_investment DESC
+        GROUP BY u.id, u.username, u.avatar, ps.total_current_value, ps.total_purchase_value, ps.total_gain, ps.total_gain_percentage, 
+                 ps.daily_gain, ps.daily_gain_percentage, ps.weekly_gain, ps.weekly_gain_percentage, ps.last_updated
+        ORDER BY ps.total_current_value DESC NULLS LAST
       )
-      SELECT 
-        ut.id,
-        ut.username,
-        ut.avatar,
-        ut.total_investment,
-        json_agg(
-          json_build_object(
-            'symbol', up.symbol,
-            'quantity', up.quantity,
-            'purchasePrice', up.purchase_price,
-            'purchaseDate', up.purchase_date
-          )
-        ) FILTER (WHERE up.symbol IS NOT NULL) as stocks
-      FROM user_totals ut
-      LEFT JOIN user_portfolios up ON ut.id = up.id
-      GROUP BY ut.id, ut.username, ut.avatar, ut.total_investment
-      ORDER BY ut.total_investment DESC
+      SELECT * FROM portfolio_data
     `;
 
     // Collect all unique stock symbols
@@ -218,7 +216,16 @@ export async function GET(request: Request) {
 
     // Fetch real-time quotes for all symbols in a single batch request
     const symbolPrices = new Map<string, number>();
-    if (allSymbols.size > 0) {
+    
+    // Try to get cached prices first
+    const cachedPrices = await getCachedData<Record<string, number>>('stock:prices:current');
+    
+    if (cachedPrices && !forceRefresh) {
+      console.log('Using cached stock prices from Redis');
+      Object.entries(cachedPrices).forEach(([symbol, price]) => {
+        symbolPrices.set(symbol, price);
+      });
+    } else if (allSymbols.size > 0) {
       try {
         console.log(`Fetching current prices from Yahoo Finance for ${allSymbols.size} symbols`);
         const symbols = Array.from(allSymbols);
@@ -242,212 +249,298 @@ export async function GET(request: Request) {
           }
         }
         console.log(`Retrieved ${symbolPrices.size} current prices from Yahoo Finance`);
+        
+        // Cache the prices for 5 minutes
+        const pricesObject = Object.fromEntries(symbolPrices.entries());
+        await cacheData('stock:prices:current', pricesObject, 300); // 5 minutes
       } catch (e) {
         console.error("Error fetching stock quotes:", e);
         // Continue with cached data if fetch fails
       }
     }
 
-    // Format the data for the frontend
-    const formattedResults = await Promise.all(results.map(async (user: Record<string, any>) => {
-      // Initialize values for users without stocks
-      if (!user.stocks || user.stocks.length === 0) {
-        // Return user with default values instead of null
-        return {
-          id: user.id,
-          username: user.username,
-          avatar: user.avatar,
-          totalGain: formatCurrency(0),
-          totalGainPercentage: "0.00",
-          dailyGain: formatCurrency(0),
-          dailyGainPercentage: "0.00",
-          weeklyGain: formatCurrency(0),
-          weeklyGainPercentage: "0.00",
-          topGainer: null,
-          topGainerPercentage: "0.00",
-          currentWorth: formatCurrency(0),
-          startingAmount: formatCurrency(0),
-          latestPurchase: null,
-          chartData: generateMockChartData(user.id, 7),
-          stockDistribution: []
-        };
-      }
-
-      // Calculate current portfolio value using real Yahoo Finance data
-      let currentWorth = 0;
-      let totalPurchaseValue = 0;
-      
-      // Log the SQL-calculated total_investment for debugging
-      console.log(`User ${user.username} (${user.id}): SQL total_investment: ${user.total_investment}`);
-      
-      // Process stocks with historical prices
-      const stocksWithCurrentPrices = await Promise.all(user.stocks.map(async (stock: Record<string, any>) => {
-        const currentPrice = symbolPrices.get(stock.symbol) || stock.purchasePrice;
-        const currentValue = stock.quantity * currentPrice;
-        currentWorth += currentValue;
-        
-        // Get historical price for more accurate purchase value calculation
-        const historicalPrice = await getHistoricalPrice(stock.symbol, stock.purchaseDate, forceRefresh);
-        
-        // Use historical price if available, otherwise use recorded purchase price
-        const actualPurchasePrice = historicalPrice !== null ? historicalPrice : stock.purchasePrice;
-        const purchaseValue = stock.quantity * actualPurchasePrice;
-        totalPurchaseValue += purchaseValue;
-        
-        return {
-          ...stock,
-          currentPrice,
-          currentValue,
-          historicalPrice: actualPurchasePrice,
-          purchaseValue
-        };
-      }));
-
-      // Calculate total gain based on purchase vs current value - using our calculated totalPurchaseValue
-      const totalGain = currentWorth - totalPurchaseValue;
-      const totalGainPercentage = totalPurchaseValue > 0 
-        ? (totalGain / totalPurchaseValue) * 100 
-        : 0;
-        
-      // Log the values for debugging - now showing both SQL and calculated values
-      console.log(`User ${user.username} (${user.id}): Current worth: ${currentWorth}, SQL investment: ${user.total_investment}, Calculated purchase value: ${totalPurchaseValue}, Total gain: ${totalGain}, Gain %: ${totalGainPercentage.toFixed(2)}%`);
-      
-      // Get historical portfolio data from Redis
-      const portfolioHistory = await getPortfolioHistory(user.id, 7);
-      
-      // Store today's portfolio value in Redis for future historical data
-      await cachePortfolioValue(user.id, todayStr, currentWorth);
-      
-      // Calculate daily and weekly gains
-      let dailyGain = 0;
-      let dailyGainPercentage = 0;
-      let weeklyGain = 0;
-      let weeklyGainPercentage = 0;
-      
-      // If we have historical data, calculate gains
-      if (portfolioHistory.length > 0) {
-        const oneDayAgoValue = portfolioHistory.find(item => 
-          new Date(item.date).getTime() < (today.getTime() - ONE_DAY_MS)
-        )?.value;
-        
-        const sevenDaysAgoValue = portfolioHistory.find(item => 
-          new Date(item.date).getTime() <= sevenDaysAgo.getTime()
-        )?.value;
-        
-        // Calculate gains if we have the data
-        if (oneDayAgoValue) {
-          dailyGain = currentWorth - oneDayAgoValue;
-          dailyGainPercentage = oneDayAgoValue > 0 
-            ? (dailyGain / oneDayAgoValue) * 100 
-            : 0;
-        }
-        
-        if (sevenDaysAgoValue) {
-          weeklyGain = currentWorth - sevenDaysAgoValue;
-          weeklyGainPercentage = sevenDaysAgoValue > 0 
-            ? (weeklyGain / sevenDaysAgoValue) * 100 
-            : 0;
-        }
-      }
-
-      // Find top gainer stock
-      let topGainer = null;
-      let topGainerPercentage = 0;
-      
-      // Find latest purchase
-      let latestPurchase = null;
-      
-      if (stocksWithCurrentPrices.length > 0) {
-        // Calculate gain percentage for each stock
-        const stocksWithGains = stocksWithCurrentPrices.map((stock: Record<string, any>) => {
-          const gain = (stock.currentPrice - stock.purchasePrice) * stock.quantity;
-          const gainPercentage = stock.purchasePrice > 0 
-            ? ((stock.currentPrice - stock.purchasePrice) / stock.purchasePrice) * 100 
-            : 0;
-          
-          return { ...stock, gain, gainPercentage };
-        }) as EnhancedStockType[];
-        
-        // Sort by gain percentage to find top gainer
-        const sortedByGain = [...stocksWithGains].sort((a, b) => 
-          (b.gainPercentage || 0) - (a.gainPercentage || 0)
-        );
-
-        if (sortedByGain.length > 0) {
-          // Use type assertion to fix linter error
-          const topStock = sortedByGain[0] as EnhancedStockType;
-          topGainer = topStock.symbol;
-          topGainerPercentage = topStock.gainPercentage || 0;
-        }
-        
-        // Sort by purchase date to find latest purchase (newest first)
-        const sortedByDate = [...stocksWithGains].sort((a, b) => {
-          const dateA = new Date(a.purchaseDate).getTime();
-          const dateB = new Date(b.purchaseDate).getTime();
-          return dateB - dateA;
-        });
-        
-        if (sortedByDate.length > 0) {
-          const latest = sortedByDate[0] as Record<string, any>;
-          latestPurchase = {
-            symbol: latest.symbol,
-            date: latest.purchaseDate,
-            price: latest.purchasePrice
-          };
-        }
-      }
-
-      // Chart data from portfolio history
-      const chartData = portfolioHistory.length > 0
-        ? portfolioHistory.map(item => ({ date: item.date, value: item.value })).reverse()
-        : generateMockChartData(user.id, 7);
-      
-      // Add today's data point to chart
-      chartData.push({ date: todayStr, value: currentWorth });
-      
-      // Format stock distribution data for pie chart
-      const stockDistribution = stocksWithCurrentPrices.map((stock: Record<string, any>) => {
-        return {
-          name: stock.symbol,
-          value: stock.currentPrice * stock.quantity,
-        };
+    // Get historical prices for 1 day ago and 7 days ago
+    const historicalPrices1Day = new Map<string, number>();
+    const historicalPrices7Days = new Map<string, number>();
+    
+    // Try to get cached historical prices first
+    const cachedPrices1Day = await getCachedData<Record<string, number>>('stock:prices:1day');
+    const cachedPrices7Days = await getCachedData<Record<string, number>>('stock:prices:7days');
+    
+    if (cachedPrices1Day && !forceRefresh) {
+      console.log('Using cached 1-day historical prices from Redis');
+      Object.entries(cachedPrices1Day).forEach(([symbol, price]) => {
+        historicalPrices1Day.set(symbol, price);
       });
+    }
+    
+    if (cachedPrices7Days && !forceRefresh) {
+      console.log('Using cached 7-day historical prices from Redis');
+      Object.entries(cachedPrices7Days).forEach(([symbol, price]) => {
+        historicalPrices7Days.set(symbol, price);
+      });
+    }
+    
+    // If we need to fetch historical prices (either forced or not cached)
+    const needToFetch1Day = forceRefresh || !cachedPrices1Day;
+    const needToFetch7Days = forceRefresh || !cachedPrices7Days;
+    
+    if ((needToFetch1Day || needToFetch7Days) && allSymbols.size > 0) {
+      try {
+        console.log(`Fetching historical prices for ${allSymbols.size} symbols`);
+        const symbols = Array.from(allSymbols);
+        
+        // For daily data, we want yesterday's closing price
+        const oneDayStart = new Date(today);
+        oneDayStart.setDate(oneDayStart.getDate() - 2); // Go back 2 days to ensure we get data
+        
+        // For weekly data, we want the closing price from 7 days ago
+        const sevenDayStart = new Date(today);
+        sevenDayStart.setDate(sevenDayStart.getDate() - 8); // Go back 8 days to ensure we get data
+        
+        // End date for both ranges (yesterday's close)
+        const endDate = new Date(today);
+        endDate.setDate(endDate.getDate() - 1);
+        
+        console.log(`Daily range: ${oneDayStart.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
+        console.log(`Weekly range: ${sevenDayStart.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
+        
+        for (const symbol of symbols) {
+          try {
+            // Get daily historical data if needed
+            if (needToFetch1Day) {
+              try {
+                console.log(`Fetching daily historical data for ${symbol}`);
+                
+                // Use chart method directly
+                const chartResult = await yahooFinance.chart(symbol, {
+                  period1: oneDayStart,
+                  period2: endDate,
+                  interval: '1d'
+                });
+                
+                if (chartResult && chartResult.quotes && chartResult.quotes.length > 0) {
+                  // Get the most recent price (yesterday's close)
+                  const quote = chartResult.quotes[chartResult.quotes.length - 1];
+                  if (quote.close !== null) {
+                    historicalPrices1Day.set(symbol, quote.close);
+                    console.log(`Got daily historical price for ${symbol}: ${quote.close}`);
+                  } else {
+                    console.log(`No valid close price in daily historical data for ${symbol}, using current price as fallback`);
+                    // Use current price as fallback
+                    const currentPrice = symbolPrices.get(symbol);
+                    if (currentPrice) {
+                      historicalPrices1Day.set(symbol, currentPrice);
+                    }
+                  }
+                } else {
+                  console.log(`No daily historical data found for ${symbol}, using current price as fallback`);
+                  // Use current price as fallback
+                  const currentPrice = symbolPrices.get(symbol);
+                  if (currentPrice) {
+                    historicalPrices1Day.set(symbol, currentPrice);
+                  }
+                }
+              } catch (chartErr) {
+                console.error(`Error fetching daily chart data for ${symbol}:`, chartErr);
+                // Use current price as fallback
+                const currentPrice = symbolPrices.get(symbol);
+                if (currentPrice) {
+                  historicalPrices1Day.set(symbol, currentPrice);
+                }
+              }
+            }
+            
+            // Get weekly historical data if needed
+            if (needToFetch7Days) {
+              try {
+                console.log(`Fetching weekly historical data for ${symbol}`);
+                
+                // Use chart method directly
+                const chartResult = await yahooFinance.chart(symbol, {
+                  period1: sevenDayStart,
+                  period2: endDate,
+                  interval: '1d'
+                });
+                
+                if (chartResult && chartResult.quotes && chartResult.quotes.length > 0) {
+                  // Get the price from 7 days ago (first data point)
+                  const quote = chartResult.quotes[0];
+                  if (quote.close !== null) {
+                    historicalPrices7Days.set(symbol, quote.close);
+                    console.log(`Got weekly historical price for ${symbol}: ${quote.close}`);
+                  } else {
+                    console.log(`No valid close price in weekly historical data for ${symbol}, using current price as fallback`);
+                    // Use current price as fallback
+                    const currentPrice = symbolPrices.get(symbol);
+                    if (currentPrice) {
+                      historicalPrices7Days.set(symbol, currentPrice);
+                    }
+                  }
+                } else {
+                  console.log(`No weekly historical data found for ${symbol}, using current price as fallback`);
+                  // Use current price as fallback
+                  const currentPrice = symbolPrices.get(symbol);
+                  if (currentPrice) {
+                    historicalPrices7Days.set(symbol, currentPrice);
+                  }
+                }
+              } catch (chartErr) {
+                console.error(`Error fetching weekly chart data for ${symbol}:`, chartErr);
+                // Use current price as fallback
+                const currentPrice = symbolPrices.get(symbol);
+                if (currentPrice) {
+                  historicalPrices7Days.set(symbol, currentPrice);
+                }
+              }
+            }
+          } catch (err) {
+            console.error(`Error fetching historical data for ${symbol}:`, err);
+            // Use current price as fallback
+            const currentPrice = symbolPrices.get(symbol);
+            if (currentPrice) {
+              if (needToFetch1Day) {
+                historicalPrices1Day.set(symbol, currentPrice);
+              }
+              if (needToFetch7Days) {
+                historicalPrices7Days.set(symbol, currentPrice);
+              }
+            }
+          }
+        }
+        
+        // Cache the historical prices
+        if (needToFetch1Day) {
+          const prices1DayObject = Object.fromEntries(historicalPrices1Day.entries());
+          await cacheData('stock:prices:1day', prices1DayObject, 86400); // 24 hours
+        }
+        
+        if (needToFetch7Days) {
+          const prices7DaysObject = Object.fromEntries(historicalPrices7Days.entries());
+          await cacheData('stock:prices:7days', prices7DaysObject, 86400); // 24 hours
+        }
+      } catch (e) {
+        console.error("Error fetching historical stock data:", e);
+      }
+    }
+
+    // Calculate real-time portfolio values and gains
+    const updatedResults = await Promise.all(results.map(async (user: Record<string, any>) => {
+      let totalCurrentValue = 0;
+      let totalPurchaseValue = 0;
+      let totalValue1DayAgo = 0;
+      let totalValue7DaysAgo = 0;
       
+      if (user.stocks && Array.isArray(user.stocks)) {
+        user.stocks.forEach((stock: Record<string, any>) => {
+          // Get current price, with fallback to purchase price
+          const currentPrice = symbolPrices.get(stock.symbol) || stock.purchasePrice;
+          
+          // Get historical prices with fallbacks
+          // For 1-day ago, use: 1) historical price if available, 2) current price, 3) purchase price
+          const price1DayAgo = historicalPrices1Day.get(stock.symbol) || currentPrice || stock.purchasePrice;
+          
+          // For 7-days ago, use: 1) historical price if available, 2) current price, 3) purchase price
+          const price7DaysAgo = historicalPrices7Days.get(stock.symbol) || currentPrice || stock.purchasePrice;
+          
+          // Calculate values
+          const currentValue = stock.quantity * currentPrice;
+          const purchaseValue = stock.quantity * stock.purchasePrice;
+          const value1DayAgo = stock.quantity * price1DayAgo;
+          const value7DaysAgo = stock.quantity * price7DaysAgo;
+          
+          // Add to totals
+          totalCurrentValue += currentValue;
+          totalPurchaseValue += purchaseValue;
+          totalValue1DayAgo += value1DayAgo;
+          totalValue7DaysAgo += value7DaysAgo;
+          
+          // Log the values for debugging
+          console.log(`Stock ${stock.symbol}: Current: $${currentPrice}, 1-Day: $${price1DayAgo}, 7-Day: $${price7DaysAgo}, Purchase: $${stock.purchasePrice}`);
+        });
+      }
+      
+      // Calculate gains and percentages
+      const totalGain = totalCurrentValue - totalPurchaseValue;
+      const totalGainPercentage = totalPurchaseValue > 0 ? (totalGain / totalPurchaseValue) * 100 : 0;
+      
+      // Calculate daily and weekly gains based on actual historical data
+      const dailyGain = totalCurrentValue - totalValue1DayAgo;
+      const dailyGainPercentage = totalValue1DayAgo > 0 ? (dailyGain / totalValue1DayAgo) * 100 : 0;
+      
+      const weeklyGain = totalCurrentValue - totalValue7DaysAgo;
+      const weeklyGainPercentage = totalValue7DaysAgo > 0 ? (weeklyGain / totalValue7DaysAgo) * 100 : 0;
+      
+      // Log the calculated values
+      console.log(`User ${user.username}: Current: $${totalCurrentValue.toFixed(2)}, Purchase: $${totalPurchaseValue.toFixed(2)}`);
+      console.log(`  Total Gain: $${totalGain.toFixed(2)} (${totalGainPercentage.toFixed(2)}%)`);
+      console.log(`  Daily Gain: $${dailyGain.toFixed(2)} (${dailyGainPercentage.toFixed(2)}%)`);
+      console.log(`  Weekly Gain: $${weeklyGain.toFixed(2)} (${weeklyGainPercentage.toFixed(2)}%)`);
+      
+      // Update database if requested
+      if (updateDb && forceRefresh) {
+        try {
+          await sql`
+            UPDATE portfolio_summaries
+            SET 
+              total_current_value = ${totalCurrentValue},
+              total_purchase_value = ${totalPurchaseValue},
+              total_gain = ${totalGain},
+              total_gain_percentage = ${totalGainPercentage},
+              daily_gain = ${dailyGain},
+              daily_gain_percentage = ${dailyGainPercentage},
+              weekly_gain = ${weeklyGain},
+              weekly_gain_percentage = ${weeklyGainPercentage},
+              last_updated = NOW()
+            WHERE user_id = ${user.id}
+          `;
+          console.log(`Updated portfolio summary in database for user ${user.username}`);
+        } catch (err) {
+          console.error(`Error updating portfolio summary for user ${user.username}:`, err);
+        }
+      }
+      
+      return {
+        ...user,
+        current_worth: totalCurrentValue,
+        purchase_value: totalPurchaseValue,
+        total_gain: totalGain,
+        total_gain_percentage: totalGainPercentage,
+        daily_gain: dailyGain,
+        daily_gain_percentage: dailyGainPercentage,
+        weekly_gain: weeklyGain,
+        weekly_gain_percentage: weeklyGainPercentage
+      };
+    }));
+
+    // Format the data for the frontend
+    const formattedResults = updatedResults.map((user: Record<string, any>) => {
       return {
         id: user.id,
         username: user.username,
         avatar: user.avatar,
-        totalGain: formatCurrency(totalGain),
-        totalGainPercentage: totalGainPercentage.toFixed(2),
-        dailyGain: formatCurrency(dailyGain),
-        dailyGainPercentage: dailyGainPercentage.toFixed(2),
-        weeklyGain: formatCurrency(weeklyGain),
-        weeklyGainPercentage: weeklyGainPercentage.toFixed(2),
-        topGainer,
-        topGainerPercentage: topGainerPercentage.toFixed(2),
-        currentWorth: formatCurrency(currentWorth),
-        startingAmount: formatCurrency(totalPurchaseValue),
-        latestPurchase,
-        chartData,
-        stockDistribution
+        totalGain: formatCurrency(user.total_gain || 0),
+        totalGainPercentage: Number(user.total_gain_percentage || 0).toFixed(2),
+        dailyGain: formatCurrency(user.daily_gain || 0),
+        dailyGainPercentage: Number(user.daily_gain_percentage || 0).toFixed(2),
+        weeklyGain: formatCurrency(user.weekly_gain || 0),
+        weeklyGainPercentage: Number(user.weekly_gain_percentage || 0).toFixed(2),
+        currentWorth: formatCurrency(user.current_worth || 0),
+        startingAmount: formatCurrency(user.purchase_value || 0),
+        stocks: user.stocks || []
       };
-    }));
-
-    // No longer need to filter out null entries since we're not returning null anymore
-    const finalResults = formattedResults;
-    
-    // Sort by current worth (highest first)
-    finalResults.sort((a, b) => {
-      // Since we already filtered out null values, we know a and b are not null
-      const aWorth = parseCurrency(a!.currentWorth);
-      const bWorth = parseCurrency(b!.currentWorth);
-      return bWorth - aWorth;
     });
 
-    // Cache the results for a short time (15 minutes) to reduce API load but keep data fresh
-    await cacheData('leaderboard:data', finalResults, 900);
+    // Log the formatted results for debugging
+    console.log("Formatted results for leaderboard:");
+    formattedResults.forEach(user => {
+      console.log(`User ${user.username}: Total: ${user.totalGainPercentage}%, Daily: ${user.dailyGainPercentage}%, Weekly: ${user.weeklyGainPercentage}%`);
+    });
+
+    // Cache the results for a short time (15 minutes)
+    await cacheData(cacheKey, formattedResults, 900);
     
-    return NextResponse.json(finalResults);
+    return NextResponse.json(formattedResults);
   } catch (error) {
     console.error("Error fetching leaderboard data:", error);
     return NextResponse.json({ error: "Failed to fetch leaderboard data" }, { status: 500 });

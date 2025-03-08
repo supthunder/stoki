@@ -280,70 +280,28 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
   
   // Effect to fetch performance data
   useEffect(() => {
-    const fetchPerformanceData = async () => {
+    const fetchPerformanceData = async (userId: number, days: number, shouldForceRefresh = false) => {
       try {
-        setPerformanceLoading(true);
-        setError(null);
-        
-        // Calculate days from oldest purchase to now
-        const days = getOldestPurchaseDate();
-        
-        // Try to get from cache first - let the Redis cache handle expiration
-        console.log(`Fetching performance data for user ${userId} with Redis caching`);
-        
-        // Only use force=true if it's been more than 6 hours since last refresh
-        const lastRefreshKey = `last_performance_refresh_${userId}`;
-        const lastRefresh = localStorage.getItem(lastRefreshKey);
-        const now = Date.now();
-        
-        let shouldForceRefresh = false;
-        
-        if (!lastRefresh) {
-          shouldForceRefresh = true;
-        } else {
-          const lastRefreshTime = parseInt(lastRefresh, 10);
-          shouldForceRefresh = (now - lastRefreshTime) > SIX_HOURS_MS;
-        }
-        
-        console.log(`Last refresh: ${lastRefresh ? new Date(parseInt(lastRefresh, 10)).toLocaleTimeString() : 'never'}`);
-        console.log(`Force refresh needed: ${shouldForceRefresh}`);
-        
-        // Use the force parameter only when needed
-        const url = shouldForceRefresh 
-          ? `/api/portfolio/performance?userId=${userId}&days=${days}&force=true`
-          : `/api/portfolio/performance?userId=${userId}&days=${days}`;
-        
-        const response = await fetch(url);
+        setLoading(true);
+        const forceParam = shouldForceRefresh ? '&force=true' : '';
+        const response = await fetch(`/api/portfolio/performance?userId=${userId}&days=${days}${forceParam}`);
         
         if (!response.ok) {
-          throw new Error(`Failed to fetch performance data: ${response.status}`);
+          throw new Error('Failed to fetch performance data');
         }
         
         const data = await response.json();
-        console.log('Performance data loaded:', data.performance?.length || 0, 'data points');
-        
-        if (data && data.performance) {
-          setPerformanceData(data.performance);
-          
-          // Update the last refresh timestamp if we did a force refresh
-          if (shouldForceRefresh) {
-            localStorage.setItem(lastRefreshKey, now.toString());
-            console.log(`Updated last refresh timestamp to ${new Date(now).toLocaleTimeString()}`);
-          }
-        } else {
-          setPerformanceData([]);
-        }
+        return data.performance || [];
       } catch (error) {
         console.error('Error fetching performance data:', error);
-        setError('Failed to load performance data. Please try again.');
-        setPerformanceData([]);
+        return [];
       } finally {
-        setPerformanceLoading(false);
+        setLoading(false);
       }
     };
     
     if (summary) {
-      fetchPerformanceData();
+      fetchPerformanceData(userId, getOldestPurchaseDate());
     }
   }, [summary, userId, portfolio]);
   

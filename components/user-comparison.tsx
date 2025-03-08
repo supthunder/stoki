@@ -70,7 +70,7 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
       setLoading(true);
       if (forceRefresh) setRefreshing(true);
       
-      const refreshParam = forceRefresh ? '?refresh=true' : '';
+      const refreshParam = forceRefresh ? '&refresh=true' : '';
       
       // Fetch leaderboard data to get both users
       const response = await fetch(`/api/leaderboard${refreshParam}`);
@@ -199,12 +199,12 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
   const fetchUserTopStocks = async (userId: number, forceRefresh = false) => {
     try {
       setStocksLoading(true);
-      const refreshParam = forceRefresh ? '?refresh=true' : '';
+      const refreshParam = forceRefresh ? '&refresh=true' : '';
       
       const response = await fetch(`/api/portfolio?userId=${userId}${refreshParam}`);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch stocks for user ${userId}`);
+        throw new Error('Failed to fetch portfolio data');
       }
       
       const data = await response.json();
