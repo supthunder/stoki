@@ -89,7 +89,6 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialized, setInitialized] = useState(false);
   // Performance data states
   const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
   const [performanceLoading, setPerformanceLoading] = useState(true);
@@ -212,10 +211,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     return String(Math.ceil(diffDays * 1.1));
   };
   
-  // Helper constant for caching
-  const SIX_HOURS_MS = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
-  
-  // Effect to fetch portfolio data
+  // Fetch portfolio data for the user
   useEffect(() => {
     const fetchPortfolio = async () => {
       try {
@@ -241,43 +237,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
 
     fetchPortfolio();
   }, [userId]);
-  
-  // Helper functions for localStorage caching
-  const getCachedData = (key: string) => {
-    try {
-      const cacheData = localStorage.getItem(key);
-      if (!cacheData) return null;
-      
-      const { data, timestamp } = JSON.parse(cacheData);
-      const now = Date.now();
-      
-      // Check if cache is still valid (less than 6 hours old)
-      if (now - timestamp < SIX_HOURS_MS) {
-        console.log(`Using cached ${key} data from ${new Date(timestamp).toLocaleTimeString()}`);
-        return data;
-      } else {
-        console.log(`Cache expired for ${key}, last updated: ${new Date(timestamp).toLocaleTimeString()}`);
-        return null;
-      }
-    } catch (error) {
-      console.error(`Error retrieving cached data for ${key}:`, error);
-      return null;
-    }
-  };
-  
-  const setCachedData = (key: string, data: any) => {
-    try {
-      const cacheObject = {
-        data,
-        timestamp: Date.now()
-      };
-      localStorage.setItem(key, JSON.stringify(cacheObject));
-      console.log(`Cached ${key} data at ${new Date().toLocaleTimeString()}`);
-    } catch (error) {
-      console.error(`Error caching data for ${key}:`, error);
-    }
-  };
-  
+
   // Effect to fetch performance data
   useEffect(() => {
     const fetchPerformanceData = async () => {
@@ -288,32 +248,8 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
         // Calculate days from oldest purchase to now
         const days = getOldestPurchaseDate();
         
-        // Try to get from cache first - let the Redis cache handle expiration
-        console.log(`Fetching performance data for user ${userId} with Redis caching`);
-        
-        // Only use force=true if it's been more than 6 hours since last refresh
-        const lastRefreshKey = `last_performance_refresh_${userId}`;
-        const lastRefresh = localStorage.getItem(lastRefreshKey);
-        const now = Date.now();
-        
-        let shouldForceRefresh = false;
-        
-        if (!lastRefresh) {
-          shouldForceRefresh = true;
-        } else {
-          const lastRefreshTime = parseInt(lastRefresh, 10);
-          shouldForceRefresh = (now - lastRefreshTime) > SIX_HOURS_MS;
-        }
-        
-        console.log(`Last refresh: ${lastRefresh ? new Date(parseInt(lastRefresh, 10)).toLocaleTimeString() : 'never'}`);
-        console.log(`Force refresh needed: ${shouldForceRefresh}`);
-        
-        // Use the force parameter only when needed
-        const url = shouldForceRefresh 
-          ? `/api/portfolio/performance?userId=${userId}&days=${days}&force=true`
-          : `/api/portfolio/performance?userId=${userId}&days=${days}`;
-        
-        const response = await fetch(url);
+        // Fetch data from API
+        const response = await fetch(`/api/portfolio/performance?userId=${userId}&days=${days}&refresh=true&force=true`);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch performance data: ${response.status}`);
@@ -324,12 +260,6 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
         
         if (data && data.performance) {
           setPerformanceData(data.performance);
-          
-          // Update the last refresh timestamp if we did a force refresh
-          if (shouldForceRefresh) {
-            localStorage.setItem(lastRefreshKey, now.toString());
-            console.log(`Updated last refresh timestamp to ${new Date(now).toLocaleTimeString()}`);
-          }
         } else {
           setPerformanceData([]);
         }
@@ -346,48 +276,90 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
       fetchPerformanceData();
     }
   }, [summary, userId, portfolio]);
-  
-  // Function to fill gaps in date series
-  const fillDateGaps = (data: PerformanceData[]): PerformanceData[] => {
-    if (!data || data.length < 2) return data;
-    
-    const sortedData = [...data].sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    
-    const filledData: PerformanceData[] = [];
-    const dateMap = new Map(sortedData.map(point => [point.date, point.value]));
-    
-    // Create a continuous date range from start to end
-    const startDate = new Date(sortedData[0].date);
-    const endDate = new Date(sortedData[sortedData.length - 1].date);
-    
-    // Iterate through each day from start to end
-    const currentDate = new Date(startDate);
-    let prevValue = sortedData[0].value; // Start with the first value
-    
-    while (currentDate <= endDate) {
-      const dateStr = currentDate.toISOString().split('T')[0];
-      
-      // If we have data for this date, use it
-      if (dateMap.has(dateStr)) {
-        prevValue = dateMap.get(dateStr)!;
-        filledData.push({ date: dateStr, value: prevValue });
-      } else {
-        // Otherwise, use the previous value (carry forward)
-        filledData.push({ date: dateStr, value: prevValue });
+
+  // Effect to fetch users for comparison
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch('/api/leaderboard');
+        if (!response.ok) {
+          throw new Error('Failed to fetch users');
+        }
+        
+        const data = await response.json();
+        if (data.leaderboard && Array.isArray(data.leaderboard)) {
+          // Filter out the current user being viewed
+          const otherUsers = data.leaderboard
+            .filter((u: any) => u.id !== userId)
+            .map((u: any) => ({
+              id: u.id,
+              name: u.name
+            }));
+          
+          // Add users to comparison options
+          setComparisonOptions(prev => [
+            ...prev.filter(o => o.type === 'index'),
+            ...otherUsers.map((u: {id: number, name: string}) => ({ 
+              id: `user-${u.id}`, 
+              name: u.name, 
+              type: 'user' as const
+            }))
+          ]);
+          
+          setUsersList(otherUsers);
+          
+          // If viewing someone else's profile, automatically add current user for comparison
+          if (user && user.id !== userId) {
+            setSelectedComparisons(prev => 
+              prev.includes(`user-${user.id}`) ? 
+                prev : 
+                [...prev, `user-${user.id}`]
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch users for comparison:", error);
       }
-      
-      // Move to next day
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
+    };
     
-    return filledData;
-  };
+    fetchUsers();
+  }, [userId, user]);
+
+  // Make sure to add the current user to comparisons when the component loads
+  React.useEffect(() => {
+    // Only proceed if we have data loaded
+    if (performanceData && performanceData.length > 0 && comparisonOptions.length > 0) {
+      console.log("Setting up auto comparison for current user", userId);
+      
+      // Find the current user option in available options
+      const currentUserOption = comparisonOptions.find(option => 
+        option.type === 'user' && option.id === userId.toString()
+      );
+      
+      if (currentUserOption) {
+        console.log("Found current user in options:", currentUserOption);
+        
+        // Only add if not already in the list
+        if (!selectedComparisons.includes(currentUserOption.id)) {
+          console.log("Adding current user to comparisons:", currentUserOption.id);
+          
+          // Update the selected comparisons list
+          setSelectedComparisons(prevComparisons => [
+            ...prevComparisons, 
+            currentUserOption.id
+          ]);
+        } else {
+          console.log("Current user already in comparisons");
+        }
+      } else {
+        console.log("Could not find current user in comparison options");
+      }
+    }
+  }, [comparisonOptions, performanceData, userId]);
   
   // Effect to fetch comparison data
   useEffect(() => {
-    // Skip if no comparisons selected or no performance data yet
+    // Don't return early if viewing someone else's profile and the current user exists
     const shouldFetchCurrentUserComparison = user && user.id !== userId;
     if ((selectedComparisons.length === 0 && !shouldFetchCurrentUserComparison) || !performanceData.length) return;
     
@@ -397,31 +369,14 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
       const newComparisonData: Record<string, PerformanceData[]> = {};
       const days = getOldestPurchaseDate();
       
-      // Check if we should force refresh comparisons
-      const lastRefreshKey = `last_comparison_refresh`;
-      const lastRefresh = localStorage.getItem(lastRefreshKey);
-      const now = Date.now();
-      
-      let shouldForceRefresh = false;
-      
-      if (!lastRefresh) {
-        shouldForceRefresh = true;
-      } else {
-        const lastRefreshTime = parseInt(lastRefresh, 10);
-        shouldForceRefresh = (now - lastRefreshTime) > SIX_HOURS_MS;
-      }
-      
-      console.log(`Last comparison refresh: ${lastRefresh ? new Date(parseInt(lastRefresh, 10)).toLocaleTimeString() : 'never'}`);
-      console.log(`Force comparison refresh needed: ${shouldForceRefresh}`);
-      
       // If viewing someone else's profile, automatically fetch current user data
       if (shouldFetchCurrentUserComparison) {
         try {
-          const currentUserId = user.id.toString();
+          const currentUserId = `user-${user.id}`;
           // Skip if already in the selected comparisons
           if (!selectedComparisons.includes(currentUserId)) {
-            // Use force parameter based on cache age
-            const response = await fetch(`/api/portfolio/performance?userId=${user.id}&days=${days}${shouldForceRefresh ? '&force=true' : ''}`);
+            // Use force=true to ensure complete data from beginning to now
+            const response = await fetch(`/api/portfolio/performance?userId=${user.id}&days=${days}&force=true`);
             
             if (response.ok) {
               const data = await response.json();
@@ -447,8 +402,8 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
       for (const comparisonId of selectedComparisons) {
         try {
           if (comparisonId === 'sp500' || comparisonId === 'nasdaq') {
-            // Fetch index data
-            const response = await fetch(`/api/market-index?index=${comparisonId}&days=${days}${shouldForceRefresh ? '&force=true' : ''}`);
+            // Fetch index data with force=true
+            const response = await fetch(`/api/market-index?index=${comparisonId}&days=${days}&force=true`);
             
             if (response.ok) {
               const data = await response.json();
@@ -476,10 +431,10 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                 performanceData.map(p => p.date)
               );
             }
-          } else {
-            // This is a user ID (without 'user-' prefix)
-            const otherUserId = comparisonId;
-            const response = await fetch(`/api/portfolio/performance?userId=${otherUserId}&days=${days}${shouldForceRefresh ? '&force=true' : ''}`);
+          } else if (comparisonId.startsWith('user-')) {
+            // Fetch other user data with force=true
+            const otherUserId = comparisonId.split('user-')[1];
+            const response = await fetch(`/api/portfolio/performance?userId=${otherUserId}&days=${days}&force=true`);
             
             if (response.ok) {
               const data = await response.json();
@@ -488,7 +443,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                 const sortedData = [...data.performance].sort((a, b) => 
                   new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
-                console.log(`User ${comparisonId} data: ${sortedData.length} points from ${sortedData[0]?.date} to ${sortedData[sortedData.length-1]?.date}`);
+                console.log(`${comparisonId} data: ${sortedData.length} points from ${sortedData[0]?.date} to ${sortedData[sortedData.length-1]?.date}`);
                 
                 // Fill gaps in data
                 const filledData = fillDateGaps(sortedData);
@@ -501,19 +456,12 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
         }
       }
       
-      // Update state with all new comparison data
-      setComparisonData(newComparisonData);
+      setComparisonData(prev => ({...prev, ...newComparisonData}));
       setComparisonLoading(false);
-      
-      // Update the last refresh timestamp if we did a force refresh
-      if (shouldForceRefresh) {
-        localStorage.setItem(lastRefreshKey, now.toString());
-        console.log(`Updated last comparison refresh timestamp to ${new Date(now).toLocaleTimeString()}`);
-      }
     };
     
     fetchComparisonData();
-  }, [selectedComparisons, performanceData, userId, user]);
+  }, [selectedComparisons, performanceData, user, userId, portfolio]);
 
   // Helper function to generate mock index data
   const generateMockIndexData = (index: string, dates: string[]): PerformanceData[] => {
@@ -600,18 +548,15 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     
     if (selectedComparisons.includes(value)) {
       // If already selected, toggle it off
-      console.log("Removing comparison:", value);
       setSelectedComparisons(prev => prev.filter(id => id !== value));
     } else {
       // If this is the first comparison and it's not the current user,
       // automatically add the current user for comparison as well
       if (selectedComparisons.length === 0 && value !== userId.toString()) {
         console.log("Auto-adding current user for comparison with:", value);
-        console.log("Current user ID:", userId.toString());
         setSelectedComparisons([value, userId.toString()]);
       } else {
         // Just add the new comparison
-        console.log("Adding new comparison:", value);
         setSelectedComparisons(prev => [...prev, value]);
       }
     }
@@ -1016,6 +961,45 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     `;
   };
 
+  // Add this helper function before the useEffect
+  const fillDateGaps = (data: PerformanceData[]): PerformanceData[] => {
+    if (!data || data.length === 0) return [];
+    
+    // Sort by date to ensure chronological order
+    const sortedData = [...data].sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    
+    const firstDate = new Date(sortedData[0].date);
+    const lastDate = new Date(sortedData[sortedData.length - 1].date);
+    const fullDateRange: PerformanceData[] = [];
+    
+    // Create a continuous date range
+    const currentDate = new Date(firstDate);
+    let prevValue = sortedData[0].value;
+    
+    while (currentDate <= lastDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const existingPoint = sortedData.find(p => p.date === dateStr);
+      
+      if (existingPoint) {
+        fullDateRange.push(existingPoint);
+        prevValue = existingPoint.value;
+      } else {
+        // If no data for this date, use previous value (flat line)
+        fullDateRange.push({
+          date: dateStr,
+          value: prevValue
+        });
+      }
+      
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return fullDateRange;
+  };
+
   // Effect to prepare comparison options (users and indices)
   useEffect(() => {
     const prepareComparisonOptions = async () => {
@@ -1052,48 +1036,38 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     prepareComparisonOptions();
   }, [usersList]);
 
-  // Automatically add current user to comparisons when performance data is loaded
+  // Fetch performance data when user changes or the refresh button is clicked
   useEffect(() => {
-    if (performanceData && performanceData.length > 0 && selectedComparisons.length === 0) {
+    if (userId) {
+      fetchPerformanceData();
+    }
+  }, [userId, refreshTrigger]);
+
+  // Auto-add current user to comparisons after performance data loads
+  useEffect(() => {
+    if (performanceData && performanceData.length > 0 && !dataAdded.current) {
+      console.log("Adding current user to comparisons automatically");
+      
+      // Mark that we've added data (use ref to avoid infinite loops)
+      dataAdded.current = true;
+      
+      // Add current user to comparisons
+      if (!selectedComparisons.includes(userId.toString())) {
+        setSelectedComparisons([...selectedComparisons, userId.toString()]);
+        console.log("Added current user to comparisons:", userId.toString());
+      }
+    }
+  }, [performanceData, userId, selectedComparisons]);
+
+  // Automatically add current user's performance to the comparison when mounted
+  useEffect(() => {
+    // Add current user to comparisons after initial data load
+    if (performanceData.length > 0 && selectedComparisons.length === 0) {
       console.log("Auto-adding current user to comparisons:", userId);
-      // Add the current user's data to comparisons
+      // Directly call handleComparisonChange with the current userId
       handleComparisonChange(userId.toString());
     }
-  }, [performanceData, selectedComparisons, userId, handleComparisonChange]);
-
-  // Effect to set initialized state after basic data is loaded
-  useEffect(() => {
-    if (!loading && userName) {
-      console.log("Component initialized with username:", userName);
-      setInitialized(true);
-    }
-  }, [loading, userName]);
-
-  // Add this effect to fetch users list for comparisons
-  useEffect(() => {
-    const fetchUsersList = async () => {
-      try {
-        const response = await fetch('/api/leaderboard');
-        if (response.ok) {
-          const data = await response.json();
-          // Extract just the id and name from leaderboard data
-          const users = data.map((user: any) => ({
-            id: user.id,
-            name: user.name
-          }));
-          setUsersList(users);
-          console.log('Fetched users list for comparison:', users.length);
-        }
-      } catch (error) {
-        console.error('Error fetching users list for comparison:', error);
-      }
-    };
-
-    // Only fetch if we don't have users yet
-    if (usersList.length === 0) {
-      fetchUsersList();
-    }
-  }, [usersList.length]);
+  }, [performanceData, userId, selectedComparisons]);
 
   return (
     <div className="space-y-6">
@@ -1160,7 +1134,6 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
               
               {/* Selected comparison indicators */}
               <div className="flex flex-wrap gap-2 mb-4">
-                {/* Always show the main portfolio label */}
                 <div className="inline-flex items-center px-2 py-1 rounded-full bg-blue-500/20 text-xs">
                   <span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>
                   {userId === user?.id ? 'Your Portfolio' : `${userName}'s Portfolio`}
@@ -1168,8 +1141,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                 {Array.from(new Set(selectedComparisons)).map(compId => {
                   const option = comparisonOptions.find(o => o.id === compId);
                   // If this is the current user's comparison and we're viewing someone else's profile
-                  const isCurrentUser = user && compId === user.id.toString();
-                  const isProfileUser = compId === userId.toString();
+                  const isCurrentUser = user && compId === `user-${user.id}`;
                   const color = isCurrentUser 
                     ? 'bg-green-500' 
                     : compId === 'sp500' 
@@ -1185,20 +1157,10 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
                     ? 'bg-purple-500/20' 
                     : 'bg-amber-500/20';
                     
-                  // Determine the label to display
-                  let label = 'Loading...';
-                  if (isCurrentUser) {
-                    label = 'Your Portfolio';
-                  } else if (isProfileUser) {
-                    label = `${userName}'s Portfolio`;
-                  } else if (option) {
-                    label = option.name;
-                  }
-                    
                   return (
                     <div key={compId} className={`inline-flex items-center px-2 py-1 rounded-full ${bgColor} text-xs`}>
                       <span className={`w-2 h-2 rounded-full ${color} mr-2`}></span>
-                      {label}
+                      {isCurrentUser ? 'Your Portfolio' : option?.name || 'Loading...'}
                       <button
                         className="ml-2 text-muted-foreground hover:text-foreground"
                         onClick={() => setSelectedComparisons(prev => prev.filter(id => id !== compId))}

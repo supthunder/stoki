@@ -36,6 +36,20 @@ export function Combobox({
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
 
+  // Direct selection handler to ensure proper handling
+  const handleItemClick = (optionValue: string) => {
+    console.log("Direct click on option:", optionValue);
+    onSelect(optionValue);
+    setOpen(false);
+  }
+
+  // Fixed onSelect handler for CommandItem
+  const handleCommandSelect = (currentValue: string) => {
+    console.log("Command select for option:", currentValue);
+    onSelect(currentValue);
+    setOpen(false);
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -60,10 +74,9 @@ export function Combobox({
               <CommandItem
                 key={option.value}
                 value={option.value}
-                onSelect={(currentValue) => {
-                  onSelect(currentValue === value ? "" : currentValue)
-                  setOpen(false)
-                }}
+                onSelect={() => handleCommandSelect(option.value)}
+                className="cursor-pointer hover:bg-accent"
+                onClick={() => handleItemClick(option.value)}
               >
                 <Check
                   className={cn(

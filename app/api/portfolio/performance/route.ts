@@ -79,6 +79,46 @@ async function calculateHistoricalValue(stocks: StockRecord[], date: Date, force
   return totalValue;
 }
 
+const SIX_HOURS = 6 * 60 * 60; // 6 hours in seconds
+
+// Function to check if cache is expired (older than 6 hours)
+const isCacheExpired = async (userId: number, days: number): Promise<boolean> => {
+  const cacheKey = `performance_${userId}_${days}`;
+  const cacheTimestampKey = `${cacheKey}_timestamp`;
+  
+  try {
+    // Get the timestamp when the data was last cached
+    const timestamp = await getCachedData(cacheTimestampKey);
+    
+    if (!timestamp) {
+      return true; // No timestamp, cache is considered expired
+    }
+    
+    const lastCacheTime = parseInt(timestamp);
+    const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+    
+    // Compare the difference with our threshold
+    return (currentTime - lastCacheTime) > SIX_HOURS;
+  } catch (error) {
+    console.error("Error checking cache expiration:", error);
+    return true; // On error, consider cache expired to be safe
+  }
+};
+
+// Function to update cache timestamp
+const updateCacheTimestamp = async (userId: number, days: number): Promise<void> => {
+  const cacheKey = `performance_${userId}_${days}`;
+  const cacheTimestampKey = `${cacheKey}_timestamp`;
+  
+  try {
+    // Set the current timestamp
+    const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+    await cacheData(cacheTimestampKey, currentTime.toString(), 30 * 24 * 60 * 60);
+  } catch (error) {
+    console.error("Error updating cache timestamp:", error);
+  }
+};
+
 export async function GET(request: Request) {
   try {
     // Get user ID from query parameters
@@ -102,6 +142,9 @@ export async function GET(request: Request) {
     
     // Create cache key for this request
     const cacheKey = `portfolio_performance_${userId}_${requestedDays}`;
+    
+    // Check if we need to force a refresh or if cache is expired (older than 6 hours)
+    const shouldRefresh = refresh || force || await isCacheExpired(parseInt(userId, 10), days);
     
     // When force=true, we'll bypass the cache completely and generate new data
     if (force) {
@@ -205,87 +248,23 @@ export async function GET(request: Request) {
       // Cache the result but for a shorter time (1 hour) since we're forcing a refresh
       await cacheData(cacheKey, result2, 3600);
       
+      // Also update the timestamp of when we cached this data
+      await updateCacheTimestamp(parseInt(userId, 10), days);
+      
       return NextResponse.json(result2);
     }
     
-    // Determine if we need to fetch just today's data or all data
-    let cachedData: any = null;
-    let needFullRefresh = refresh;
-    
-    // Try to get from cache first (unless force=true, which we've already handled)
-    if (!needFullRefresh) {
-      cachedData = await getCachedData(cacheKey);
-      
-      // If we have cached data but refresh=true, we'll just refresh today's data point
-      if (cachedData !== null && refresh) {
-        // We'll use the cached data but update today's value later
-        needFullRefresh = false;
-      }
-    }
-    
-    // If we have cached data and don't need a full refresh, we can just update today's value
-    if (cachedData !== null && !needFullRefresh) {
-      // If refresh parameter is true, update just today's data point
-      if (refresh) {
-        // Connect to the database
-        const sql = createSqlClient();
-        
-        // Fetch the user's portfolio stocks
-        const result = await sql`
-          SELECT 
-            id, 
-            symbol, 
-            quantity, 
-            purchase_price as "purchasePrice", 
-            purchase_date as "purchaseDate"
-          FROM user_stocks
-          WHERE user_id = ${parseInt(userId, 10)}
-          ORDER BY id ASC
-        `;
-        
-        const stocks: StockRecord[] = result.map((row: any) => ({
-          id: row.id,
-          symbol: row.symbol,
-          quantity: row.quantity,
-          purchasePrice: row.purchasePrice,
-          purchaseDate: row.purchaseDate
-        }));
-        
-        if (stocks.length > 0) {
-          // Get today's value with forced refresh
-          const today = new Date();
-          const todayValue = await calculateHistoricalValue(stocks, today, true);
-          const todayStr = today.toISOString().split('T')[0];
-          
-          // Update or add today's data point
-          let todayUpdated = false;
-          const updatedPerformance = cachedData.performance.map((point: PerformanceData) => {
-            if (point.date === todayStr) {
-              todayUpdated = true;
-              return { date: todayStr, value: todayValue };
-            }
-            return point;
-          });
-          
-          // If today wasn't in the dataset, add it
-          if (!todayUpdated) {
-            updatedPerformance.push({ date: todayStr, value: todayValue });
-            // Sort by date
-            updatedPerformance.sort((a: PerformanceData, b: PerformanceData) => 
-              new Date(a.date).getTime() - new Date(b.date).getTime()
-            );
-          }
-          
-          // Update the cached object
-          cachedData.performance = updatedPerformance;
-          
-          // Update the cache with the new data (cache for 12 hours)
-          await cacheData(cacheKey, cachedData, 12 * 60 * 60);
+    // Get cached data if available and we don't need a refresh
+    if (!shouldRefresh) {
+      try {
+        const cachedData = await getCachedData<any>(cacheKey);
+        if (cachedData) {
+          console.log(`Using cached performance data for user ${userId}`);
+          return NextResponse.json(cachedData);
         }
+      } catch (error) {
+        console.error('Error retrieving cached data:', error);
       }
-      
-      // Return the cached data (with the updated today's value if applicable)
-      return NextResponse.json(cachedData);
     }
     
     // If we're here, we need to generate all data points
@@ -382,6 +361,9 @@ export async function GET(request: Request) {
     
     // Cache the result for 12 hours (43200 seconds) instead of just 1 hour
     await cacheData(cacheKey, result2, 12 * 60 * 60);
+    
+    // Also update the timestamp of when we cached this data
+    await updateCacheTimestamp(parseInt(userId, 10), days);
     
     return NextResponse.json(result2);
   } catch (error) {
