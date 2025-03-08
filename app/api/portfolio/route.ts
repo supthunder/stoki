@@ -248,14 +248,14 @@ export async function GET(request: Request) {
       const historicalPrice = await getHistoricalPrice(stock.symbol, stock.purchaseDate);
       
       // If we couldn't get historical price, use the purchase price that was recorded
-      const actualPurchasePrice = historicalPrice !== null ? historicalPrice : stock.purchasePrice;
+      const actualPurchasePrice = stock.purchasePrice; // Always use the recorded purchase price for accuracy
       const purchaseValue = stock.quantity * actualPurchasePrice;
       
-      // Calculate gain/loss based on historical vs current price
+      // Calculate gain/loss based on purchase vs current price
       const gain = currentValue - purchaseValue;
-      const gainPercentage = purchaseValue > 0 ? (gain / purchaseValue) * 100 : 0;
+      const gainPercentage = ((currentPrice - actualPurchasePrice) / actualPurchasePrice) * 100;
       
-      console.log(`Stock ${stock.symbol}: Recorded Purchase Price: ${stock.purchasePrice}, Historical Price on ${stock.purchaseDate}: ${historicalPrice}, Current Price: ${currentPrice}, Gain: ${gain}`);
+      console.log(`Stock ${stock.symbol}: Purchase Price: ${actualPurchasePrice}, Current Price: ${currentPrice}, Gain: ${gain}, Gain %: ${gainPercentage}%`);
       
       return {
         ...stock,

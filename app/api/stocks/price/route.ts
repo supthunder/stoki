@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import yahooFinance from "yahoo-finance2";
+import { getCachedData, cacheData } from "@/lib/redis";
 
 // Mock data for historical prices (simplified for demo)
 // In a real implementation, you would use a proper API
@@ -137,9 +138,10 @@ const mockPrices: Record<string, number> = {
 
 export async function GET(request: Request) {
   try {
-    // Get the stock symbol from the URL
+    // Get the stock symbol and date from the URL
     const { searchParams } = new URL(request.url);
     const symbol = searchParams.get('symbol');
+    const date = searchParams.get('date');
     
     if (!symbol) {
       return NextResponse.json(
@@ -147,41 +149,134 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
+
+    // Create cache keys
+    const currentPriceCacheKey = `yahoo:price:${symbol}`;
+    const historicalPriceCacheKey = date ? `yahoo:price:${symbol}:${date}` : null;
     
-    // Fetch real-time quote data from Yahoo Finance
-    const quote = await yahooFinance.quote(symbol.toUpperCase());
-    
-    // Extract the relevant data from the quote response
-    const data = {
-      symbol: quote.symbol,
-      price: quote.regularMarketPrice,
-      change: quote.regularMarketChange,
-      changePercent: quote.regularMarketChangePercent,
-      previousClose: quote.regularMarketPreviousClose,
-      open: quote.regularMarketOpen,
-      dayHigh: quote.regularMarketDayHigh,
-      dayLow: quote.regularMarketDayLow,
-      marketCap: quote.marketCap,
-      volume: quote.regularMarketVolume,
-      shortName: quote.shortName,
-      longName: quote.longName,
-      currency: quote.currency
-    };
-    
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('Error getting stock price:', error);
-    
-    // Check if it's a "symbol not found" error
-    if (error instanceof Error && error.message.includes("Not Found")) {
-      return NextResponse.json(
-        { error: 'Stock symbol not found' },
-        { status: 404 }
-      );
+    // If we have a date parameter, try to get historical price
+    if (date) {
+      // Try to get from cache first
+      const cachedPrice = await getCachedData<number>(historicalPriceCacheKey!);
+      if (cachedPrice !== null) {
+        return NextResponse.json({
+          symbol,
+          price: cachedPrice,
+          date,
+        });
+      }
+
+      try {
+        // Parse the date and create a range
+        const targetDate = new Date(date);
+        const endDate = new Date(targetDate);
+        endDate.setDate(endDate.getDate() + 1);
+
+        // Get historical data
+        const historicalData = await yahooFinance.historical(symbol, {
+          period1: targetDate,
+          period2: endDate,
+          interval: '1d'
+        });
+
+        if (historicalData && historicalData.length > 0) {
+          const price = historicalData[0].close;
+          
+          // Cache the historical price for 30 days
+          await cacheData(historicalPriceCacheKey!, price, 30 * 24 * 60 * 60);
+          
+          return NextResponse.json({
+            symbol,
+            price,
+            date,
+          });
+        }
+
+        // If no historical data found, try to get current price
+        const quote = await yahooFinance.quote(symbol.toUpperCase());
+        const currentPrice = quote.regularMarketPrice;
+        
+        return NextResponse.json({
+          symbol,
+          price: currentPrice,
+          date,
+          note: "Historical price not available, using current price"
+        });
+      } catch (error) {
+        console.error(`Error fetching historical data for ${symbol}:`, error);
+        // If historical data fetch fails, try to get current price
+        try {
+          const quote = await yahooFinance.quote(symbol.toUpperCase());
+          const currentPrice = quote.regularMarketPrice;
+          
+          return NextResponse.json({
+            symbol,
+            price: currentPrice,
+            date,
+            note: "Historical price not available, using current price"
+          });
+        } catch (e) {
+          console.error("Error fetching current price:", e);
+          return NextResponse.json(
+            { error: "Failed to fetch price data" },
+            { status: 500 }
+          );
+        }
+      }
     }
     
+    // If no date provided, get current price
+    try {
+      // Try to get current price from cache
+      const cachedPrice = await getCachedData<any>(currentPriceCacheKey);
+      if (cachedPrice !== null) {
+        return NextResponse.json(cachedPrice);
+      }
+
+      // Fetch real-time quote data from Yahoo Finance
+      const quote = await yahooFinance.quote(symbol.toUpperCase());
+      
+      // Extract the relevant data from the quote response
+      const data = {
+        symbol: quote.symbol,
+        price: quote.regularMarketPrice,
+        change: quote.regularMarketChange,
+        changePercent: quote.regularMarketChangePercent,
+        previousClose: quote.regularMarketPreviousClose,
+        open: quote.regularMarketOpen,
+        dayHigh: quote.regularMarketDayHigh,
+        dayLow: quote.regularMarketDayLow,
+        marketCap: quote.marketCap,
+        volume: quote.regularMarketVolume,
+        shortName: quote.shortName,
+        longName: quote.longName,
+        currency: quote.currency
+      };
+      
+      // Cache current price data for 5 minutes
+      await cacheData(currentPriceCacheKey, data, 300);
+      
+      return NextResponse.json(data);
+    } catch (error) {
+      console.error('Error getting stock price:', error);
+      
+      // Check if it's a "symbol not found" error
+      if (error instanceof Error && error.message.includes("Not Found")) {
+        return NextResponse.json(
+          { error: 'Stock symbol not found' },
+          { status: 404 }
+        );
+      }
+      
+      return NextResponse.json(
+        { error: 'Failed to get stock price' },
+        { status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error("Error in price API:", error);
     return NextResponse.json(
-      { error: 'Failed to get stock price' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
