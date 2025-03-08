@@ -97,6 +97,7 @@ export function UserLeaderboard() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [timeFrame, setTimeFrame] = useState<"total" | "weekly" | "daily">("total");
   const { isMobile } = useIsMobile();
 
   // Fetch leaderboard data
@@ -142,11 +143,11 @@ export function UserLeaderboard() {
     }
   };
 
-  // Sort users based on current sort settings
+  // Sort users based on current sort settings and time frame
   const sortedUsers = [...leaderboardData].sort((a, b) => {
     let aValue, bValue;
     
-    // Get values based on sortColumn
+    // Get values based on sortColumn and timeFrame
     switch (sortColumn) {
       case "currentWorth":
         aValue = parseCurrency(a.currentWorth);
@@ -169,8 +170,17 @@ export function UserLeaderboard() {
         bValue = parseCurrency(b.startingAmount);
         break;
       default:
-        aValue = parseCurrency(a.currentWorth);
-        bValue = parseCurrency(b.currentWorth);
+        // Default sort based on the selected time frame
+        if (timeFrame === "daily") {
+          aValue = parseCurrency(a.dailyGain);
+          bValue = parseCurrency(b.dailyGain);
+        } else if (timeFrame === "weekly") {
+          aValue = parseCurrency(a.weeklyGain);
+          bValue = parseCurrency(b.weeklyGain);
+        } else {
+          aValue = parseCurrency(a.totalGain);
+          bValue = parseCurrency(b.totalGain);
+        }
     }
     
     // Apply sort order
@@ -229,6 +239,20 @@ export function UserLeaderboard() {
     fetchLeaderboardData(true).finally(() => {
       setRefreshing(false);
     });
+  };
+
+  // Handle tab change
+  const handleTimeFrameChange = (value: string) => {
+    setTimeFrame(value as "total" | "weekly" | "daily");
+    
+    // Update sort column based on time frame
+    if (value === "daily") {
+      setSortColumn("dailyGain");
+    } else if (value === "weekly") {
+      setSortColumn("weeklyGain");
+    } else {
+      setSortColumn("totalGain");
+    }
   };
 
   // If a user is selected, show their profile
@@ -318,10 +342,10 @@ export function UserLeaderboard() {
             />
           ) : (
             // Desktop leaderboard with tabs
-            <Tabs defaultValue="total" className="w-full">
+            <Tabs defaultValue="total" value={timeFrame} onValueChange={handleTimeFrameChange} className="w-full">
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="total">Total Gain</TabsTrigger>
-                <TabsTrigger value="daily">Daily</TabsTrigger>
+                <TabsTrigger value="daily">Today</TabsTrigger>
                 <TabsTrigger value="weekly">Weekly</TabsTrigger>
                 <TabsTrigger value="worth">Net Worth</TabsTrigger>
               </TabsList>
@@ -471,8 +495,6 @@ export function UserLeaderboard() {
                   </Table>
                 </div>
               </TabsContent>
-              
-              {/* Other tabs content would go here */}
             </Tabs>
           )}
         </>
