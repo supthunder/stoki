@@ -136,7 +136,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
     if (!userId || !summary) return;
     
     try {
-      const days = getOldestPurchaseDate();
+      const days = getOldestPurchaseDate(); // This is fine as a string for the URL parameter
       
       // First try a complete refresh with force=true parameter
       const response = await fetch(`/api/portfolio/performance?userId=${userId}&days=${days}&refresh=true&force=true`);
@@ -280,7 +280,7 @@ export function UserProfile({ userId, userName, onBack }: ProfileProps) {
   
   // Effect to fetch performance data
   useEffect(() => {
-    const fetchPerformanceData = async (userId: number, days: number, shouldForceRefresh = false) => {
+    const fetchPerformanceData = async (userId: number, days: string | number, shouldForceRefresh = false) => {
       try {
         setLoading(true);
         const forceParam = shouldForceRefresh ? '&force=true' : '';
