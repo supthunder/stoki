@@ -31,6 +31,7 @@ import { UserProfile } from "@/components/user-profile";
 import { useIsMobile } from "@/lib/hooks";
 import { RefreshCw } from "lucide-react";
 import { MobileLeaderboard } from "./mobile-leaderboard";
+import { UserComparison } from "./user-comparison";
 
 // Medal component for top 3 rankings
 const RankMedal = ({ rank }: { rank: number }) => {
@@ -100,6 +101,8 @@ export function UserLeaderboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [timeFrame, setTimeFrame] = useState<"total" | "weekly" | "daily">("total");
   const { isMobile } = useIsMobile();
+  const [viewingComparison, setViewingComparison] = useState(false);
+  const [viewingProfile, setViewingProfile] = useState(false);
 
   // Fetch leaderboard data
   const fetchLeaderboardData = async (forceRefresh = false) => {
@@ -228,11 +231,18 @@ export function UserLeaderboard() {
   // Handle clicking on a user
   const handleUserClick = (user: LeaderboardUser) => {
     setSelectedUser(user);
+    if (isMobile) {
+      setViewingComparison(true);
+    } else {
+      setViewingProfile(true);
+    }
   };
 
   // Handle going back to leaderboard
   const handleBackToLeaderboard = () => {
     setSelectedUser(null);
+    setViewingProfile(false);
+    setViewingComparison(false);
   };
 
   // Handle refresh button click
@@ -257,23 +267,37 @@ export function UserLeaderboard() {
     }
   };
 
-  // If a user is selected, show their profile
-  if (selectedUser) {
+  // If viewing profile, show the profile component
+  if (viewingProfile && user && selectedUser) {
     return (
-      <div>
-        <Button 
-          variant="ghost" 
-          onClick={handleBackToLeaderboard} 
-          className="mb-4"
-        >
-          ← Back to Leaderboard
-        </Button>
-        <UserProfile 
-          userId={selectedUser.id} 
-          userName={selectedUser.username} 
-          onBack={handleBackToLeaderboard} 
-        />
-      </div>
+      <UserProfile 
+        userId={selectedUser.id} 
+        userName={selectedUser.username} 
+        onBack={handleBackToLeaderboard} 
+      />
+    );
+  }
+
+  // If viewing comparison, show the comparison component
+  if (viewingComparison && user && selectedUser) {
+    return (
+      <UserComparison
+        opponentId={selectedUser.id}
+        onBack={handleBackToLeaderboard}
+      />
+    );
+  }
+
+  // If on mobile, use the mobile leaderboard component
+  if (isMobile) {
+    return (
+      <MobileLeaderboard 
+        users={sortedUsers} 
+        onUserClick={handleUserClick} 
+        currentUserId={user?.id}
+        defaultTimeFrame={timeFrame}
+        onTimeFrameChange={handleTimeFrameChange}
+      />
     );
   }
 
