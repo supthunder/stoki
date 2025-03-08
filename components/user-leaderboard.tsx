@@ -68,7 +68,8 @@ const StockLogo = ({ symbol }: { symbol: string }) => {
 // Type for leaderboard user data
 type LeaderboardUser = {
   id: number;
-  name: string;
+  username: string;
+  avatar?: string;
   totalGain: string;
   totalGainPercentage: string;
   dailyGain: string;
@@ -117,6 +118,7 @@ export function UserLeaderboard() {
       }
       
       const data = await response.json();
+      console.log("Leaderboard data:", data);
       setLeaderboardData(data);
     } catch (err) {
       console.error("Failed to fetch leaderboard data:", err);
@@ -268,7 +270,7 @@ export function UserLeaderboard() {
         </Button>
         <UserProfile 
           userId={selectedUser.id} 
-          userName={selectedUser.name} 
+          userName={selectedUser.username} 
           onBack={handleBackToLeaderboard} 
         />
       </div>
@@ -394,7 +396,7 @@ export function UserLeaderboard() {
                           </TableCell>
                           <TableCell className="font-medium max-w-[120px] md:max-w-none">
                             <div className="truncate">
-                              {user.name}
+                              {user.username}
                               {user.topGainer && (
                                 <div className="mt-1">
                                   <Badge variant="outline" className="text-xs">

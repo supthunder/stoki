@@ -6,8 +6,107 @@ import { createSqlClient } from "@/lib/db";
 const CACHE_KEY = "transactions:recent";
 const CACHE_EXPIRY = 60 * 5; // 5 minutes in seconds
 
+// Ensure transactions table exists
+async function ensureTransactionsTable() {
+  const sql = createSqlClient();
+  
+  try {
+    // Check if table exists
+    const tableExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'transactions'
+      );
+    `;
+    
+    if (!tableExists[0]?.exists) {
+      console.log("Creating transactions table...");
+      
+      // Create transactions table
+      await sql`
+        CREATE TABLE IF NOT EXISTS transactions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL,
+          symbol VARCHAR(10) NOT NULL,
+          quantity INTEGER NOT NULL,
+          price NUMERIC(10, 2) NOT NULL,
+          type VARCHAR(4) NOT NULL CHECK (type IN ('buy', 'sell')),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `;
+      
+      // Seed with some initial data
+      await seedTransactionsData();
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error ensuring transactions table:", error);
+    return false;
+  }
+}
+
+// Seed transactions table with initial data
+async function seedTransactionsData() {
+  const sql = createSqlClient();
+  
+  try {
+    console.log("Seeding transactions table with initial data...");
+    
+    // Get existing users
+    const users = await sql`SELECT id, username FROM users LIMIT 10`;
+    
+    if (users.length === 0) {
+      console.log("No users found to seed transactions");
+      return;
+    }
+    
+    // Symbols to use for transactions
+    const symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "JPM", "BAC", "GS"];
+    
+    // Generate 50 random transactions
+    const transactions = [];
+    
+    for (let i = 0; i < 50; i++) {
+      const user = users[Math.floor(Math.random() * users.length)];
+      const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+      const type = Math.random() > 0.5 ? 'buy' : 'sell';
+      const quantity = Math.floor(Math.random() * 5) + 1;
+      const price = parseFloat((Math.random() * 500 + 50).toFixed(2));
+      
+      // Generate a random date within the last 30 days
+      const date = new Date();
+      date.setDate(date.getDate() - Math.floor(Math.random() * 30));
+      
+      transactions.push({
+        user_id: user.id,
+        symbol,
+        quantity,
+        price,
+        type,
+        created_at: date.toISOString()
+      });
+    }
+    
+    // Insert transactions in batches
+    for (const transaction of transactions) {
+      await sql`
+        INSERT INTO transactions (user_id, symbol, quantity, price, type, created_at)
+        VALUES (${transaction.user_id}, ${transaction.symbol}, ${transaction.quantity}, ${transaction.price}, ${transaction.type}, ${transaction.created_at})
+      `;
+    }
+    
+    console.log(`Seeded ${transactions.length} transactions`);
+  } catch (error) {
+    console.error("Error seeding transactions data:", error);
+  }
+}
+
 export async function GET(request: Request) {
   try {
+    // Ensure transactions table exists
+    await ensureTransactionsTable();
+    
     // Check if we have cached data
     const cachedTransactions = await getCachedData<any[]>(CACHE_KEY);
     if (cachedTransactions) {

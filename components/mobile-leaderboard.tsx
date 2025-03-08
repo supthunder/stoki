@@ -7,7 +7,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type LeaderboardUser = {
   id: number;
-  name: string;
+  username: string;
+  avatar?: string;
   totalGain: string;
   totalGainPercentage: string;
   dailyGain: string;
@@ -45,6 +46,11 @@ export function MobileLeaderboard({
   onTimeFrameChange
 }: MobileLeaderboardProps) {
   const [timeFrame, setTimeFrame] = useState<TimeFrame>(defaultTimeFrame);
+  
+  // Add debug log
+  useEffect(() => {
+    console.log("Mobile leaderboard users:", users);
+  }, [users]);
   
   // Update local state when defaultTimeFrame changes
   useEffect(() => {
@@ -99,17 +105,17 @@ export function MobileLeaderboard({
       
       // Sort based on the selected time frame
       if (timeFrame === "daily") {
-        aValue = parseCurrency(a.dailyGain);
-        bValue = parseCurrency(b.dailyGain);
+        aValue = parseFloat(a.dailyGainPercentage);
+        bValue = parseFloat(b.dailyGainPercentage);
       } else if (timeFrame === "weekly") {
-        aValue = parseCurrency(a.weeklyGain);
-        bValue = parseCurrency(b.weeklyGain);
+        aValue = parseFloat(a.weeklyGainPercentage);
+        bValue = parseFloat(b.weeklyGainPercentage);
       } else {
-        aValue = parseCurrency(a.totalGain);
-        bValue = parseCurrency(b.totalGain);
+        aValue = parseFloat(a.totalGainPercentage);
+        bValue = parseFloat(b.totalGainPercentage);
       }
       
-      // Sort in descending order (highest gain first)
+      // Sort in descending order (highest percentage first)
       return bValue - aValue;
     });
   }, [users, timeFrame]);
@@ -125,7 +131,7 @@ export function MobileLeaderboard({
         <TabsList className="grid w-full grid-cols-3 mb-4">
           <TabsTrigger value="total">All Time</TabsTrigger>
           <TabsTrigger value="weekly">Weekly</TabsTrigger>
-          <TabsTrigger value="daily">Today</TabsTrigger>
+          <TabsTrigger value="daily">Daily</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -159,17 +165,19 @@ export function MobileLeaderboard({
                       )}
                     </div>
                     
-                    {/* Name */}
+                    {/* Name and Net Worth */}
                     <div>
-                      <h3 className="font-semibold text-base">{user.name}</h3>
+                      <h3 className="font-semibold text-base">{user.username}</h3>
+                      <div className="text-xs text-muted-foreground">
+                        {user.currentWorth}
+                      </div>
                     </div>
                   </div>
                   
-                  {/* Portfolio Value and Gain */}
+                  {/* Gain Percentage */}
                   <div className="text-right">
-                    <div className="font-bold text-base">{user.currentWorth}</div>
-                    <div className={`text-xs ${isPositive ? "text-green-600" : "text-red-600"}`}>
-                      {isPositive ? "+" : ""}{gain} ({percentage})
+                    <div className={`text-xl font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                      {isPositive ? "+" : ""}{percentage}%
                     </div>
                   </div>
                 </div>

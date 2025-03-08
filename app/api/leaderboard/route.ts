@@ -247,9 +247,27 @@ export async function GET(request: Request) {
 
     // Format the data for the frontend
     const formattedResults = await Promise.all(results.map(async (user: Record<string, any>) => {
-      // Skip users without stocks
+      // Initialize values for users without stocks
       if (!user.stocks || user.stocks.length === 0) {
-        return null;
+        // Return user with default values instead of null
+        return {
+          id: user.id,
+          username: user.username,
+          avatar: user.avatar,
+          totalGain: formatCurrency(0),
+          totalGainPercentage: "0.00",
+          dailyGain: formatCurrency(0),
+          dailyGainPercentage: "0.00",
+          weeklyGain: formatCurrency(0),
+          weeklyGainPercentage: "0.00",
+          topGainer: null,
+          topGainerPercentage: "0.00",
+          currentWorth: formatCurrency(0),
+          startingAmount: formatCurrency(0),
+          latestPurchase: null,
+          chartData: generateMockChartData(user.id, 7),
+          stockDistribution: []
+        };
       }
 
       // Calculate current portfolio value using real Yahoo Finance data
@@ -394,7 +412,8 @@ export async function GET(request: Request) {
       
       return {
         id: user.id,
-        name: user.username,
+        username: user.username,
+        avatar: user.avatar,
         totalGain: formatCurrency(totalGain),
         totalGainPercentage: totalGainPercentage.toFixed(2),
         dailyGain: formatCurrency(dailyGain),
@@ -411,8 +430,8 @@ export async function GET(request: Request) {
       };
     }));
 
-    // Filter out null entries (users without stocks)
-    const finalResults = formattedResults.filter(Boolean);
+    // No longer need to filter out null entries since we're not returning null anymore
+    const finalResults = formattedResults;
     
     // Sort by current worth (highest first)
     finalResults.sort((a, b) => {
