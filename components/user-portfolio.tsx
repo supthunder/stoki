@@ -18,6 +18,7 @@ import { AddStockDialog } from "./add-stock-dialog";
 import { EditStockDialog } from "./edit-stock-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { UserProfile } from "./user-profile";
+import { useIsMobile } from "@/lib/hooks";
 
 // Types for stock data
 type Stock = {
@@ -49,10 +50,11 @@ export function UserPortfolio() {
   const [error, setError] = useState<string | null>(null);
   const [isAddStockOpen, setIsAddStockOpen] = useState(false);
   const [isEditStockOpen, setIsEditStockOpen] = useState(false);
-  const [editingStock, setEditingStock] = useState<Stock | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [deletingStockId, setDeletingStockId] = useState<number | null>(null);
-  const [showProfile, setShowProfile] = useState(false);
+  const [viewingProfile, setViewingProfile] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const { isMobile } = useIsMobile();
 
   const fetchPortfolio = async (forceRefresh = false) => {
     if (!user) return;
@@ -178,11 +180,11 @@ export function UserPortfolio() {
 
   // Handle returning from profile view
   const handleBackFromProfile = () => {
-    setShowProfile(false);
+    setViewingProfile(false);
   };
 
   // If profile view is shown, render the UserProfile component
-  if (showProfile && user) {
+  if (viewingProfile && user) {
     return (
       <UserProfile 
         userId={user.id} 
@@ -300,38 +302,65 @@ export function UserPortfolio() {
 
   // Add a function to handle editing a stock
   const handleEditStock = (stock: Stock) => {
-    setEditingStock(stock);
+    setSelectedStock(stock);
     setIsEditStockOpen(true);
   };
 
   return (
-    <>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Your Portfolio</CardTitle>
-          <div className="flex gap-2">
-            <Button 
-              size="sm" 
-              variant="outline"
-              onClick={() => fetchPortfolio(true)}
-              disabled={refreshing}
-              className="flex items-center gap-1"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh Prices'}
-            </Button>
-            <Button 
-              size="sm" 
-              onClick={() => setIsAddStockOpen(true)}
-              className="flex items-center gap-1"
-            >
-              <PlusCircle className="h-4 w-4" />
-              Add Stock
-            </Button>
+    <div>
+      {viewingProfile ? (
+        <div>
+          <Button 
+            variant="ghost" 
+            onClick={handleBackFromProfile} 
+            className="mb-4"
+          >
+            ← Back to Portfolio
+          </Button>
+          <UserProfile 
+            userId={user?.id || 0} 
+            userName={user?.username || ""} 
+            onBack={handleBackFromProfile} 
+          />
+        </div>
+      ) : (
+        <>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold`}>
+              {isMobile ? "Portfolio" : "Your Stock Portfolio"}
+            </h2>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size={isMobile ? "sm" : "default"}
+                onClick={refreshLeaderboard} 
+                disabled={loading}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                {loading ? "Refreshing..." : "Refresh"}
+              </Button>
+              <Button 
+                onClick={() => setIsAddStockOpen(true)}
+                size={isMobile ? "sm" : "default"}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                {isMobile ? "Add" : "Add Stock"}
+              </Button>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
+
+          {error ? (
+            <div className="bg-destructive/20 p-4 rounded-md mb-4">
+              <p className="text-destructive font-medium">{error}</p>
+              <Button 
+                variant="outline" 
+                className="mt-2" 
+                onClick={handleRetry}
+              >
+                Try Again
+              </Button>
+            </div>
+          ) : loading ? (
             <div className="space-y-4">
               <div className="flex justify-between">
                 <Skeleton className="h-10 w-[150px]" />
@@ -340,75 +369,79 @@ export function UserPortfolio() {
               <Skeleton className="h-[300px] w-full" />
             </div>
           ) : portfolio.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="rounded-md border bg-card text-card-foreground p-8 text-center">
+              <h3 className="text-lg font-medium mb-2">No stocks in your portfolio</h3>
               <p className="text-muted-foreground mb-4">
-                You don't have any stocks in your portfolio yet
+                Add your first stock to start tracking your investments.
               </p>
               <Button onClick={() => setIsAddStockOpen(true)}>
+                <PlusCircle className="mr-2 h-4 w-4" />
                 Add Your First Stock
               </Button>
             </div>
           ) : (
             <>
               {/* Portfolio Summary */}
-              {summary && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-muted p-3 rounded-md">
-                    <div className="text-sm text-muted-foreground">Current Value</div>
-                    <div className="text-lg font-semibold">
-                      {formatCurrency(summary.totalCurrentValue)}
+              <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4 mb-6`}>
+                <Card>
+                  <CardHeader className="py-2">
+                    <CardTitle className="text-sm text-muted-foreground">Current Value</CardTitle>
+                  </CardHeader>
+                  <CardContent className="py-2">
+                    <div className="text-2xl font-bold">
+                      {summary ? formatCurrency(summary.totalCurrentValue) : "$0.00"}
                     </div>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md">
-                    <div className="text-sm text-muted-foreground">Invested</div>
-                    <div className="text-lg font-semibold">
-                      {formatCurrency(summary.totalPurchaseValue)}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="py-2">
+                    <CardTitle className="text-sm text-muted-foreground">Initial Investment</CardTitle>
+                  </CardHeader>
+                  <CardContent className="py-2">
+                    <div className="text-2xl font-bold">
+                      {summary ? formatCurrency(summary.totalPurchaseValue) : "$0.00"}
                     </div>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md">
-                    <div className="text-sm text-muted-foreground">Total Gain/Loss</div>
-                    <div className={`text-lg font-semibold ${summary.totalGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {summary.totalGain >= 0 ? "↑ " : "↓ "}{formatCurrency(summary.totalGain)}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="py-2">
+                    <CardTitle className="text-sm text-muted-foreground">Total Gain/Loss</CardTitle>
+                  </CardHeader>
+                  <CardContent className="py-2">
+                    <div className={`text-2xl font-bold ${summary && summary.totalGain >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {summary ? formatCurrency(summary.totalGain) : "$0.00"}
                     </div>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md">
-                    <div className="text-sm text-muted-foreground">Return</div>
-                    <div className={`text-lg font-semibold ${summary.totalGainPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatPercentage(summary.totalGainPercentage)}{summary.totalGainPercentage >= 0 ? " ↗" : " ↘"}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="py-2">
+                    <CardTitle className="text-sm text-muted-foreground">Return %</CardTitle>
+                  </CardHeader>
+                  <CardContent className="py-2">
+                    <div className={`text-2xl font-bold ${summary && summary.totalGainPercentage >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {summary ? formatPercentage(summary.totalGainPercentage) : "0.00%"}
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Performance Chart Button */}
-              <div className="flex justify-center my-6">
-                <Button 
-                  onClick={() => setShowProfile(true)}
-                  className="flex items-center gap-2"
-                  variant="outline"
-                  size="lg"
-                >
-                  <BarChart2 className="h-5 w-5" />
-                  View Performance Chart
-                </Button>
+                  </CardContent>
+                </Card>
               </div>
 
-              {/* Stocks Table */}
-              <div className="rounded-md border overflow-hidden">
+              {/* Portfolio Table */}
+              <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Symbol</TableHead>
+                      <TableHead className="hidden md:table-cell">Company</TableHead>
                       <TableHead>Quantity</TableHead>
-                      <TableHead>Purchase Price</TableHead>
+                      <TableHead className="hidden md:table-cell">Purchase Price</TableHead>
+                      <TableHead className="hidden md:table-cell">Purchase Date</TableHead>
                       <TableHead>Current Price</TableHead>
-                      <TableHead>Purchase Date</TableHead>
-                      <TableHead className="text-right">Gain/Loss</TableHead>
+                      <TableHead>Gain/Loss</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {portfolio.map(stock => (
+                    {portfolio.map((stock) => (
                       <StockRow
                         key={stock.id}
                         stock={stock}
@@ -424,24 +457,23 @@ export function UserPortfolio() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
 
-      <AddStockDialog 
-        open={isAddStockOpen} 
-        onOpenChange={setIsAddStockOpen}
-        onStockAdded={handleStockAdded}
-      />
+          <AddStockDialog
+            open={isAddStockOpen}
+            onOpenChange={setIsAddStockOpen}
+            onStockAdded={handleStockAdded}
+          />
 
-      {/* We'll need to create an EditStockDialog component next */}
-      {editingStock && (
-        <EditStockDialog
-          open={isEditStockOpen}
-          onOpenChange={setIsEditStockOpen}
-          stock={editingStock}
-          onStockUpdated={fetchPortfolio}
-        />
+          {selectedStock && (
+            <EditStockDialog
+              open={isEditStockOpen}
+              onOpenChange={setIsEditStockOpen}
+              stock={selectedStock}
+              onStockUpdated={handleStockAdded}
+            />
+          )}
+        </>
       )}
-    </>
+    </div>
   );
 } 
