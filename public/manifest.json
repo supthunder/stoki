@@ -1,0 +1,27 @@
+{
+  "name": "Stoki - Social Stock Trading",
+  "short_name": "Stoki",
+  "description": "Track and share your stock portfolio with friends",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://stoki.vercel.app/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "https://stoki.vercel.app/logo192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://stoki.vercel.app/logo512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+} 

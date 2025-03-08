@@ -10,6 +10,14 @@ export type User = {
   avatar?: string;
 };
 
+// Define minimal user type for cookie storage
+type MinimalUser = {
+  id: number;
+  username: string;
+  // Only store avatar if it's a URL, not base64
+  avatar?: string;
+};
+
 // Define context type
 type AuthContextType = {
   user: User | null;
@@ -24,12 +32,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Cookie name
 const USER_COOKIE = "stoki_user";
-// Cookie expiration (30 days)
-const COOKIE_EXPIRATION = 30;
+// Cookie expiration (90 days instead of 30)
+const COOKIE_EXPIRATION = 90;
+
+// Helper function to minimize user data for cookie storage
+const minimizeUserForCookie = (user: User): MinimalUser => {
+  // Create a minimal version of the user object
+  const minimalUser: MinimalUser = {
+    id: user.id,
+    username: user.username,
+  };
+  
+  // Only include avatar if it's a URL, not a base64 string
+  if (user.avatar && !user.avatar.startsWith('data:')) {
+    minimalUser.avatar = user.avatar;
+  }
+  
+  return minimalUser;
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Debug function to check cookie
+  const debugCookie = () => {
+    if (typeof window === 'undefined') return;
+    const cookie = Cookies.get(USER_COOKIE);
+    console.log('Current cookie value:', cookie ? 'Found' : 'Not found');
+    if (cookie) {
+      try {
+        const parsed = JSON.parse(cookie);
+        console.log('Parsed cookie:', parsed);
+        // Check cookie size
+        const cookieSize = new Blob([cookie]).size;
+        console.log(`Cookie size: ${cookieSize} bytes (max: 4096 bytes)`);
+      } catch (e) {
+        console.error('Failed to parse cookie:', e);
+      }
+    }
+  };
 
   // Check for existing user cookie on load - only in browser
   useEffect(() => {
@@ -38,32 +80,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Ensure this only runs client-side
         if (typeof window === 'undefined') return;
         
+        console.log('Checking for user cookie...');
         const userCookie = Cookies.get(USER_COOKIE);
+        console.log('User cookie found:', userCookie ? 'Yes' : 'No');
+        
         if (userCookie) {
-          const userData = JSON.parse(userCookie);
-          // Verify user exists in database via API
-          const response = await fetch('/api/auth/verify', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ username: userData.username })
-          });
-          
-          const data = await response.json();
-          
-          if (data.success && data.user) {
-            setUser(data.user);
-          } else {
-            // User doesn't exist in the database, clear cookie
-            Cookies.remove(USER_COOKIE);
+          try {
+            const userData = JSON.parse(userCookie);
+            console.log('Parsed user data from cookie:', userData);
+            
+            // Verify user exists in database via API
+            console.log('Verifying user with API...');
+            const response = await fetch('/api/auth/verify', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ username: userData.username })
+            });
+            
+            const data = await response.json();
+            console.log('API verification response:', data);
+            
+            if (data.success && data.user) {
+              console.log('User verified successfully, setting user state');
+              setUser(data.user);
+              
+              // Refresh the cookie to extend its lifetime - use minimal data
+              console.log('Refreshing cookie with verified user data');
+              const minimalUserData = minimizeUserForCookie(data.user);
+              Cookies.set(USER_COOKIE, JSON.stringify(minimalUserData), { 
+                expires: COOKIE_EXPIRATION,
+                sameSite: 'lax',
+                path: '/'
+              });
+              
+              // Debug cookie after setting
+              setTimeout(debugCookie, 100);
+            } else {
+              // User doesn't exist in the database, clear cookie
+              console.log('User verification failed, clearing cookie');
+              Cookies.remove(USER_COOKIE, { path: '/' });
+            }
+          } catch (parseError) {
+            console.error('Error parsing user cookie:', parseError);
+            Cookies.remove(USER_COOKIE, { path: '/' });
           }
+        } else {
+          console.log('No user cookie found, user is not logged in');
         }
       } catch (error) {
         console.error("Error checking user:", error);
         // If there's an error, clear the cookie
         if (typeof window !== 'undefined') {
-          Cookies.remove(USER_COOKIE);
+          Cookies.remove(USER_COOKIE, { path: '/' });
         }
       } finally {
         setLoading(false);
@@ -77,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (username: string) => {
     try {
       setLoading(true);
+      console.log('Logging in user:', username);
       
       // Create or get existing user via API
       const response = await fetch('/api/auth/login', {
@@ -88,20 +159,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       
       const data = await response.json();
+      console.log('Login API response:', data);
       
       if (!response.ok) {
         throw new Error(data.message || 'Login failed');
       }
       
       // Set user in state
+      console.log('Setting user state after login');
       setUser(data.user);
       
-      // Save user in cookie (30 days) - only in browser
+      // Save user in cookie (90 days) - only in browser
       if (typeof window !== 'undefined') {
-        Cookies.set(USER_COOKIE, JSON.stringify(data.user), { 
+        console.log('Setting user cookie after login');
+        // Use minimal user data for cookie
+        const minimalUserData = minimizeUserForCookie(data.user);
+        Cookies.set(USER_COOKIE, JSON.stringify(minimalUserData), { 
           expires: COOKIE_EXPIRATION,
-          sameSite: 'strict'
+          sameSite: 'lax',
+          path: '/'
         });
+        
+        // Debug cookie after setting
+        setTimeout(debugCookie, 100);
       }
     } catch (error) {
       console.error("Error during login:", error);
@@ -113,9 +193,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Logout function
   const logout = () => {
+    console.log('Logging out user');
     setUser(null);
     if (typeof window !== 'undefined') {
-      Cookies.remove(USER_COOKIE);
+      Cookies.remove(USER_COOKIE, { path: '/' });
+      console.log('Cookie removed during logout');
     }
   };
 
@@ -123,6 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
 
     try {
+      console.log('Updating avatar for user:', user.id);
       const response = await fetch('/api/user/avatar', {
         method: 'POST',
         headers: {
@@ -139,12 +222,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await response.json();
+      console.log('Avatar update API response:', data);
       
       if (data.success) {
         // Update user in state and cookie
         const updatedUser = { ...user, avatar: base64Image || avatarUrl };
+        console.log('Setting updated user with new avatar');
         setUser(updatedUser);
-        Cookies.set(USER_COOKIE, JSON.stringify(updatedUser), { expires: COOKIE_EXPIRATION });
+        
+        console.log('Updating cookie with new avatar');
+        // Use minimal user data for cookie - don't store base64 in cookie
+        const minimalUserData = minimizeUserForCookie(updatedUser);
+        Cookies.set(USER_COOKIE, JSON.stringify(minimalUserData), { 
+          expires: COOKIE_EXPIRATION,
+          sameSite: 'lax',
+          path: '/'
+        });
+        
+        // Debug cookie after setting
+        setTimeout(debugCookie, 100);
       } else {
         throw new Error(data.message || 'Failed to update avatar');
       }
