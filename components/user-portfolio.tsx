@@ -19,6 +19,7 @@ import { EditStockDialog } from "./edit-stock-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { UserProfile } from "./user-profile";
 import { useIsMobile } from "@/lib/hooks";
+import { MobilePortfolio } from "./mobile-portfolio";
 
 // Types for stock data
 type Stock = {
@@ -183,7 +184,7 @@ export function UserPortfolio() {
     setViewingProfile(false);
   };
 
-  // If profile view is shown, render the UserProfile component
+  // If viewing profile, show the profile component
   if (viewingProfile && user) {
     return (
       <UserProfile 
@@ -191,6 +192,13 @@ export function UserPortfolio() {
         userName={user.username} 
         onBack={handleBackFromProfile} 
       />
+    );
+  }
+
+  // If on mobile, use the mobile portfolio component
+  if (isMobile) {
+    return (
+      <MobilePortfolio onViewProfile={() => setViewingProfile(true)} />
     );
   }
 
