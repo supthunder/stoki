@@ -43,7 +43,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <div className="fixed top-4 left-4 z-50">
+            <div className="absolute top-4 left-4 z-50">
               <UserMenu />
             </div>
             {children}
