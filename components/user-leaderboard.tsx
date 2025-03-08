@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, MouseEvent } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { UserProfile } from "@/components/user-profile";
 import { useIsMobile } from "@/lib/hooks";
 import { RefreshCw } from "lucide-react";
+import { MobileLeaderboard } from "./mobile-leaderboard";
 
 // Medal component for top 3 rankings
 const RankMedal = ({ rank }: { rank: number }) => {
@@ -52,39 +53,19 @@ const RankMedal = ({ rank }: { rank: number }) => {
       </div>
     );
   }
-  
+  return null;
+};
+
+// Stock logo component
+const StockLogo = ({ symbol }: { symbol: string }) => {
   return (
-    <div className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center">
-      <span className="text-base font-bold">{rank}</span>
+    <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
+      {symbol.charAt(0)}
     </div>
   );
 };
 
-// Stock logo component to handle fallbacks
-const StockLogo = ({ symbol }: { symbol: string }) => {
-  const [imageError, setImageError] = useState(false);
-
-  // If we've already had an error, use the fallback immediately
-  if (imageError) {
-    return (
-      <div className="w-4 h-4 bg-primary/20 rounded-sm flex items-center justify-center text-[8px] font-bold">
-        {symbol.substring(0, 2)}
-      </div>
-    );
-  }
-
-  // Try to load the image first
-  return (
-    <img 
-      src={`https://storage.googleapis.com/iex/api/logos/${symbol}.png`}
-      alt={symbol}
-      className="w-4 h-4 object-contain rounded-sm"
-      onError={() => setImageError(true)}
-    />
-  );
-};
-
-// Types for user stock data
+// Type for leaderboard user data
 type LeaderboardUser = {
   id: number;
   name: string;
@@ -118,55 +99,38 @@ export function UserLeaderboard() {
   const [refreshing, setRefreshing] = useState(false);
   const { isMobile } = useIsMobile();
 
+  // Fetch leaderboard data
   const fetchLeaderboardData = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
       
-      const refreshParam = forceRefresh ? '?refresh=true' : '';
-      const response = await fetch(`/api/leaderboard${refreshParam}`);
+      const url = forceRefresh 
+        ? "/api/leaderboard?refresh=true" 
+        : "/api/leaderboard";
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch leaderboard data');
+        throw new Error(`Failed to fetch leaderboard data: ${response.status}`);
       }
       
       const data = await response.json();
       setLeaderboardData(data);
     } catch (err) {
       console.error("Failed to fetch leaderboard data:", err);
-      setError("Failed to load leaderboard data");
+      setError(err instanceof Error ? err.message : "Failed to fetch leaderboard data");
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial data fetch on component mount
+  // Load data on component mount
   useEffect(() => {
-    // Always force refresh on initial load to get the latest data
-    fetchLeaderboardData(true);
+    fetchLeaderboardData();
   }, []);
-  
-  // Set up auto-refresh interval (every 2 minutes)
-  useEffect(() => {
-    // Don't set up auto-refresh if user is looking at a profile
-    if (selectedUser) return;
-    
-    const intervalId = setInterval(() => {
-      fetchLeaderboardData(true);
-    }, 2 * 60 * 1000); // 2 minutes in milliseconds
-    
-    // Clean up interval on component unmount
-    return () => clearInterval(intervalId);
-  }, [selectedUser]);
 
-  // Highlight the current user in the leaderboard
-  const highlightCurrentUser = (userId: number) => {
-    if (user && user.id === userId) {
-      return "bg-primary/10";
-    }
-    return "";
-  };
-
+  // Handle sorting
   const handleSort = (column: string) => {
     if (sortColumn === column) {
       // Toggle sort order if clicking the same column
@@ -178,10 +142,11 @@ export function UserLeaderboard() {
     }
   };
 
+  // Sort users based on current sort settings
   const sortedUsers = [...leaderboardData].sort((a, b) => {
     let aValue, bValue;
     
-    // Get values based on sortBy column
+    // Get values based on sortColumn
     switch (sortColumn) {
       case "currentWorth":
         aValue = parseCurrency(a.currentWorth);
@@ -212,63 +177,35 @@ export function UserLeaderboard() {
     return sortDirection === "desc" ? bValue - aValue : aValue - bValue;
   });
 
-  // Simple mini chart component - Replacing with Shadcn UI charts
+  // Helper function to highlight the current user
+  const highlightCurrentUser = (userId: number) => {
+    return userId === user?.id ? "bg-accent/30" : "";
+  };
+
+  // Mini chart component for trends
   const MiniChart = ({ data }: { data?: { date: string; value: number }[] }) => {
-    if (!data || data.length < 2) return null;
-    
-    // Calculate if overall trend is positive
-    const isPositive = data[data.length - 1].value >= data[0].value;
+    if (!data || data.length === 0) {
+      return <div className="h-10 w-16 bg-muted rounded-md"></div>;
+    }
+
+    const chartData = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     return (
-      <div className="h-14 w-32">
+      <div className="h-10 w-16">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
+          <AreaChart data={chartData}>
             <defs>
-              <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor={isPositive ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"}
-                  stopOpacity={0.3}
-                />
-                <stop
-                  offset="95%"
-                  stopColor={isPositive ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"}
-                  stopOpacity={0}
-                />
+              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  return (
-                    <div className="rounded-lg border bg-background p-2 shadow-sm">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-medium">Date</span>
-                          <span className="font-bold">
-                            {payload[0]?.payload?.date || ""}
-                          </span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-medium">Value</span>
-                          <span className="font-bold">
-                            ${payload[0]?.value?.toLocaleString() || "0"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
             <Area
               type="monotone"
               dataKey="value"
-              stroke={isPositive ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"}
+              stroke="#10b981"
               fillOpacity={1}
-              fill="url(#chartGradient)"
-              strokeWidth={2}
+              fill="url(#colorValue)"
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -276,68 +213,25 @@ export function UserLeaderboard() {
     );
   };
 
-  // Stock Distribution Pie Chart
-  const StockDistributionChart = ({ data }: { data?: { name: string, value: number }[] }) => {
-    if (!data || data.length === 0) return null;
-    
-    // Generate colors for each segment
-    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
-    
-    return (
-      <div className="h-14 w-32">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              innerRadius={15}
-              outerRadius={25}
-              paddingAngle={2}
-              dataKey="value"
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  return (
-                    <div className="rounded-lg border bg-background p-2 shadow-sm">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-medium">
-                          {payload[0]?.name || ""}
-                        </span>
-                        <span className="font-bold">
-                          ${payload[0]?.value?.toLocaleString() || "0"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-    );
-  };
-
+  // Handle clicking on a user
   const handleUserClick = (user: LeaderboardUser) => {
     setSelectedUser(user);
   };
 
+  // Handle going back to leaderboard
   const handleBackToLeaderboard = () => {
     setSelectedUser(null);
   };
 
-  // This function ensures the event parameter doesn't get passed to fetchLeaderboardData
+  // Handle refresh button click
   const handleRefresh = () => {
-    fetchLeaderboardData(true);
+    setRefreshing(true);
+    fetchLeaderboardData(true).finally(() => {
+      setRefreshing(false);
+    });
   };
 
+  // If a user is selected, show their profile
   if (selectedUser) {
     return (
       <div>
@@ -395,641 +289,193 @@ export function UserLeaderboard() {
           </Button>
         </div>
       ) : loading ? (
-        <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[80px]">Rank</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
-                  Daily {sortColumn === "dailyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                </TableHead>
-                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("weeklyGain")}>
-                  7-Day {sortColumn === "weeklyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                </TableHead>
-                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("totalGain")}>
-                  Total Gain {sortColumn === "totalGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                </TableHead>
-                <TableHead className="hidden md:table-cell">Trend</TableHead>
-                <TableHead className="hidden md:table-cell whitespace-nowrap">Latest Purchase</TableHead>
-                <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("startingAmount")}>
-                  Initial Investment {sortColumn === "startingAmount" && (sortDirection === "desc" ? "↓" : "↑")}
-                </TableHead>
-                <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
-                  Net Worth {sortColumn === "currentWorth" && (sortDirection === "desc" ? "↓" : "↑")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {Array(5).fill(0).map((_, index) => (
-                <TableRow key={`skeleton-${index}`}>
-                  <TableCell><Skeleton className="h-4 w-6" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-20" /></TableCell>
-                  <TableCell className="hidden md:table-cell"><Skeleton className="h-10 w-16" /></TableCell>
-                  <TableCell className="hidden md:table-cell"><Skeleton className="h-10 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                  <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="space-y-3">
+          {Array(5).fill(0).map((_, index) => (
+            <Card key={`skeleton-${index}`}>
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <Skeleton className="h-5 w-28" />
+                  </div>
+                  <div className="text-right">
+                    <Skeleton className="h-5 w-20 ml-auto" />
+                    <Skeleton className="h-4 w-16 ml-auto mt-1" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : (
-        <Tabs defaultValue="total" className="w-full">
-          <TabsList className={`grid w-full ${isMobile ? 'grid-cols-3' : 'grid-cols-4'}`}>
-            <TabsTrigger value="total">Total Gain</TabsTrigger>
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            {!isMobile && <TabsTrigger value="worth">Net Worth</TabsTrigger>}
-          </TabsList>
-
-          <TabsContent value="total">
-            <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">Rank</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
-                      Daily {sortColumn === "dailyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("weeklyGain")}>
-                      7-Day {sortColumn === "weeklyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("totalGain")}>
-                      Total Gain {sortColumn === "totalGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="hidden md:table-cell">Trend</TableHead>
-                    <TableHead className="hidden md:table-cell whitespace-nowrap">Latest Purchase</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("startingAmount")}>
-                      Initial Investment {sortColumn === "startingAmount" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
-                      Net Worth {sortColumn === "currentWorth" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedUsers.map((user, index) => (
-                    <TableRow 
-                      key={user.id} 
-                      className={`${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/50`}
-                      onClick={() => handleUserClick(user)}
-                    >
-                      <TableCell className="font-medium">
-                        {index < 3 ? (
-                          <RankMedal rank={index + 1} />
-                        ) : (
-                          index + 1
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium max-w-[120px] md:max-w-none">
-                        <div className="truncate">
-                          {user.name}
-                          {user.topGainer && (
-                            <div className="mt-1">
-                              <Badge variant="outline" className="text-xs">
-                                Top: {user.topGainer} ({user.topGainerPercentage}%)
-                              </Badge>
+        <>
+          {isMobile ? (
+            // Mobile-specific leaderboard
+            <MobileLeaderboard 
+              users={sortedUsers} 
+              onUserClick={handleUserClick} 
+              currentUserId={user?.id}
+            />
+          ) : (
+            // Desktop leaderboard with tabs
+            <Tabs defaultValue="total" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="total">Total Gain</TabsTrigger>
+                <TabsTrigger value="daily">Daily</TabsTrigger>
+                <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                <TabsTrigger value="worth">Net Worth</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="total">
+                <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[80px]">Rank</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
+                          Daily {sortColumn === "dailyGain" && (sortDirection === "desc" ? "↓" : "↑")}
+                        </TableHead>
+                        <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("weeklyGain")}>
+                          7-Day {sortColumn === "weeklyGain" && (sortDirection === "desc" ? "↓" : "↑")}
+                        </TableHead>
+                        <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("totalGain")}>
+                          Total Gain {sortColumn === "totalGain" && (sortDirection === "desc" ? "↓" : "↑")}
+                        </TableHead>
+                        <TableHead className="hidden md:table-cell">Trend</TableHead>
+                        <TableHead className="hidden md:table-cell whitespace-nowrap">Latest Purchase</TableHead>
+                        <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("startingAmount")}>
+                          Initial Investment {sortColumn === "startingAmount" && (sortDirection === "desc" ? "↓" : "↑")}
+                        </TableHead>
+                        <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
+                          Net Worth {sortColumn === "currentWorth" && (sortDirection === "desc" ? "↓" : "↑")}
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedUsers.map((user, index) => (
+                        <TableRow 
+                          key={user.id} 
+                          className={`${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/50`}
+                          onClick={() => handleUserClick(user)}
+                        >
+                          <TableCell className="font-medium">
+                            {index < 3 ? (
+                              <RankMedal rank={index + 1} />
+                            ) : (
+                              index + 1
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium max-w-[120px] md:max-w-none">
+                            <div className="truncate">
+                              {user.name}
+                              {user.topGainer && (
+                                <div className="mt-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    Top: {user.topGainer} ({user.topGainerPercentage}%)
+                                  </Badge>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.dailyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.dailyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}
-                            {user.dailyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.weeklyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.weeklyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}
-                            {user.weeklyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.totalGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.totalGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}
-                            {user.totalGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <MiniChart data={user.chartData} />
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {user.latestPurchase ? (
-                          <div className="flex flex-col">
-                            <div className="flex items-center space-x-1">
-                              <span className="font-semibold">{user.latestPurchase.symbol}</span>
-                              <StockLogo symbol={user.latestPurchase.symbol} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col whitespace-nowrap">
+                              <span
+                                className={
+                                  parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
+                                }
+                              >
+                                {user.dailyGain}
+                              </span>
+                              <span
+                                className={`text-xs ${
+                                  parseFloat(user.dailyGainPercentage) >= 0
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}
+                                {user.dailyGainPercentage}%
+                              </span>
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(user.latestPurchase.date).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No purchases</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {user.startingAmount}
-                      </TableCell>
-                      <TableCell className="text-right font-medium whitespace-nowrap">
-                        {user.currentWorth}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="daily">
-            <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">Rank</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
-                      Daily {sortColumn === "dailyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("weeklyGain")}>
-                      7-Day {sortColumn === "weeklyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("totalGain")}>
-                      Total Gain {sortColumn === "totalGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="hidden md:table-cell">Trend</TableHead>
-                    <TableHead className="hidden md:table-cell whitespace-nowrap">Latest Purchase</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("startingAmount")}>
-                      Initial Investment {sortColumn === "startingAmount" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
-                      Net Worth {sortColumn === "currentWorth" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedUsers.map((user, index) => (
-                    <TableRow 
-                      key={user.id} 
-                      className={`${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/50`}
-                      onClick={() => handleUserClick(user)}
-                    >
-                      <TableCell className="font-medium">
-                        {index < 3 ? (
-                          <RankMedal rank={index + 1} />
-                        ) : (
-                          index + 1
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium max-w-[120px] md:max-w-none">
-                        <div className="truncate">
-                          {user.name}
-                          {user.topGainer && (
-                            <div className="mt-1">
-                              <Badge variant="outline" className="text-xs">
-                                Top: {user.topGainer} ({user.topGainerPercentage}%)
-                              </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col whitespace-nowrap">
+                              <span
+                                className={
+                                  parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
+                                }
+                              >
+                                {user.weeklyGain}
+                              </span>
+                              <span
+                                className={`text-xs ${
+                                  parseFloat(user.weeklyGainPercentage) >= 0
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}
+                                {user.weeklyGainPercentage}%
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.dailyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.dailyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}
-                            {user.dailyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.weeklyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.weeklyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}
-                            {user.weeklyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.totalGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.totalGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}
-                            {user.totalGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <MiniChart data={user.chartData} />
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {user.latestPurchase ? (
-                          <div className="flex flex-col">
-                            <div className="flex items-center space-x-1">
-                              <span className="font-semibold">{user.latestPurchase.symbol}</span>
-                              <StockLogo symbol={user.latestPurchase.symbol} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col whitespace-nowrap">
+                              <span
+                                className={
+                                  parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
+                                }
+                              >
+                                {user.totalGain}
+                              </span>
+                              <span
+                                className={`text-xs ${
+                                  parseFloat(user.totalGainPercentage) >= 0
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}
+                                {user.totalGainPercentage}%
+                              </span>
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(user.latestPurchase.date).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No purchases</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {user.startingAmount}
-                      </TableCell>
-                      <TableCell className="text-right font-medium whitespace-nowrap">
-                        {user.currentWorth}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="weekly">
-            <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">Rank</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
-                      Daily {sortColumn === "dailyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("weeklyGain")}>
-                      7-Day {sortColumn === "weeklyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("totalGain")}>
-                      Total Gain {sortColumn === "totalGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="hidden md:table-cell">Trend</TableHead>
-                    <TableHead className="hidden md:table-cell whitespace-nowrap">Latest Purchase</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("startingAmount")}>
-                      Initial Investment {sortColumn === "startingAmount" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
-                      Net Worth {sortColumn === "currentWorth" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedUsers.map((user, index) => (
-                    <TableRow 
-                      key={user.id} 
-                      className={`${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/50`}
-                      onClick={() => handleUserClick(user)}
-                    >
-                      <TableCell className="font-medium">
-                        {index < 3 ? (
-                          <RankMedal rank={index + 1} />
-                        ) : (
-                          index + 1
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium max-w-[120px] md:max-w-none">
-                        <div className="truncate">
-                          {user.name}
-                          {user.topGainer && (
-                            <div className="mt-1">
-                              <Badge variant="outline" className="text-xs">
-                                Top: {user.topGainer} ({user.topGainerPercentage}%)
-                              </Badge>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.dailyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.dailyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}
-                            {user.dailyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.weeklyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.weeklyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}
-                            {user.weeklyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.totalGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.totalGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}
-                            {user.totalGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <MiniChart data={user.chartData} />
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {user.latestPurchase ? (
-                          <div className="flex flex-col">
-                            <div className="flex items-center space-x-1">
-                              <span className="font-semibold">{user.latestPurchase.symbol}</span>
-                              <StockLogo symbol={user.latestPurchase.symbol} />
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(user.latestPurchase.date).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No purchases</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {user.startingAmount}
-                      </TableCell>
-                      <TableCell className="text-right font-medium whitespace-nowrap">
-                        {user.currentWorth}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="worth">
-            <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">Rank</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
-                      Daily {sortColumn === "dailyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("weeklyGain")}>
-                      7-Day {sortColumn === "weeklyGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("totalGain")}>
-                      Total Gain {sortColumn === "totalGain" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="hidden md:table-cell">Trend</TableHead>
-                    <TableHead className="hidden md:table-cell whitespace-nowrap">Latest Purchase</TableHead>
-                    <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("startingAmount")}>
-                      Initial Investment {sortColumn === "startingAmount" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                    <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => handleSort("currentWorth")}>
-                      Net Worth {sortColumn === "currentWorth" && (sortDirection === "desc" ? "↓" : "↑")}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedUsers.map((user, index) => (
-                    <TableRow 
-                      key={user.id} 
-                      className={`${highlightCurrentUser(user.id)} cursor-pointer hover:bg-accent/50`}
-                      onClick={() => handleUserClick(user)}
-                    >
-                      <TableCell className="font-medium">
-                        {index < 3 ? (
-                          <RankMedal rank={index + 1} />
-                        ) : (
-                          index + 1
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium max-w-[120px] md:max-w-none">
-                        <div className="truncate">
-                          {user.name}
-                          {user.topGainer && (
-                            <div className="mt-1">
-                              <Badge variant="outline" className="text-xs">
-                                Top: {user.topGainer} ({user.topGainerPercentage}%)
-                              </Badge>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.dailyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.dailyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.dailyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.dailyGainPercentage) >= 0 ? "+" : ""}
-                            {user.dailyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.weeklyGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.weeklyGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.weeklyGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.weeklyGainPercentage) >= 0 ? "+" : ""}
-                            {user.weeklyGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col whitespace-nowrap">
-                          <span
-                            className={
-                              parseCurrency(user.totalGain) >= 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {user.totalGain}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              parseFloat(user.totalGainPercentage) >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {parseFloat(user.totalGainPercentage) >= 0 ? "+" : ""}
-                            {user.totalGainPercentage}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <MiniChart data={user.chartData} />
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {user.latestPurchase ? (
-                          <div className="flex flex-col">
-                            <div className="flex items-center space-x-1">
-                              <span className="font-semibold">{user.latestPurchase.symbol}</span>
-                              <StockLogo symbol={user.latestPurchase.symbol} />
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(user.latestPurchase.date).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No purchases</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {user.startingAmount}
-                      </TableCell>
-                      <TableCell className="text-right font-medium whitespace-nowrap">
-                        {user.currentWorth}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-        </Tabs>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <MiniChart data={user.chartData} />
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            {user.latestPurchase ? (
+                              <div className="flex flex-col">
+                                <div className="flex items-center space-x-1">
+                                  <span className="font-semibold">{user.latestPurchase.symbol}</span>
+                                  <StockLogo symbol={user.latestPurchase.symbol} />
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(user.latestPurchase.date).toLocaleDateString()}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No purchases</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            {user.startingAmount}
+                          </TableCell>
+                          <TableCell className="text-right font-medium whitespace-nowrap">
+                            {user.currentWorth}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TabsContent>
+              
+              {/* Other tabs content would go here */}
+            </Tabs>
+          )}
+        </>
       )}
     </div>
   );
