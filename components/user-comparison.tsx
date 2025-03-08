@@ -58,6 +58,9 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [userTopStocks, setUserTopStocks] = useState<any[]>([]);
+  const [opponentTopStocks, setOpponentTopStocks] = useState<any[]>([]);
+  const [stocksLoading, setStocksLoading] = useState(true);
 
   // Fetch user and opponent data
   const fetchData = async (forceRefresh = false) => {
@@ -88,6 +91,12 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
       
       setUserData(currentUserData);
       setOpponentData(opponentUserData);
+      
+      // Fetch top stocks for both users
+      await Promise.all([
+        fetchUserTopStocks(user.id, forceRefresh),
+        fetchUserTopStocks(opponentId, forceRefresh)
+      ]);
       
       // Try to fetch real performance data first
       try {
@@ -183,6 +192,47 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  // Fetch top stocks for a user
+  const fetchUserTopStocks = async (userId: number, forceRefresh = false) => {
+    try {
+      setStocksLoading(true);
+      const refreshParam = forceRefresh ? '?refresh=true' : '';
+      
+      const response = await fetch(`/api/portfolio?userId=${userId}${refreshParam}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch stocks for user ${userId}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.stocks || data.stocks.length === 0) {
+        if (userId === user?.id) {
+          setUserTopStocks([]);
+        } else {
+          setOpponentTopStocks([]);
+        }
+        return;
+      }
+      
+      // Sort stocks by gain percentage (descending)
+      const sortedStocks = [...data.stocks].sort((a, b) => b.gainPercentage - a.gainPercentage);
+      
+      // Get top 3 stocks
+      const topStocks = sortedStocks.slice(0, 3);
+      
+      if (userId === user?.id) {
+        setUserTopStocks(topStocks);
+      } else {
+        setOpponentTopStocks(topStocks);
+      }
+    } catch (error) {
+      console.error(`Error fetching top stocks for user ${userId}:`, error);
+    } finally {
+      setStocksLoading(false);
     }
   };
 
@@ -421,6 +471,65 @@ export function UserComparison({ opponentId, onBack }: UserComparisonProps) {
                 <div className={`text-sm ${parsePercentage(opponentData?.totalGainPercentage || "0") >= 0 ? "text-green-500" : "text-red-500"}`}>
                   {opponentData?.totalGain} ({opponentData?.totalGainPercentage}%)
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Top Stocks */}
+          <div className="grid grid-cols-2 gap-4">
+            <Card className="bg-black/20 border-0">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-sm">Your Top Stocks</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {stocksLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                  </div>
+                ) : userTopStocks.length > 0 ? (
+                  <div className="space-y-3">
+                    {userTopStocks.map((stock) => (
+                      <div key={stock.id} className="flex justify-between items-center">
+                        <span className="font-medium text-white">{stock.symbol}</span>
+                        <span className={`${stock.gainPercentage >= 0 ? 'text-green-500' : 'text-red-500'} font-medium`}>
+                          {stock.gainPercentage >= 0 ? '+' : ''}{stock.gainPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No stocks found</p>
+                )}
+              </CardContent>
+            </Card>
+            
+            <Card className="bg-black/20 border-0">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-sm">Their Top Stocks</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {stocksLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                  </div>
+                ) : opponentTopStocks.length > 0 ? (
+                  <div className="space-y-3">
+                    {opponentTopStocks.map((stock) => (
+                      <div key={stock.id} className="flex justify-between items-center">
+                        <span className="font-medium text-white">{stock.symbol}</span>
+                        <span className={`${stock.gainPercentage >= 0 ? 'text-green-500' : 'text-red-500'} font-medium`}>
+                          {stock.gainPercentage >= 0 ? '+' : ''}{stock.gainPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No stocks found</p>
+                )}
               </CardContent>
             </Card>
           </div>
