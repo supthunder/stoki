@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserLeaderboard } from "@/components/user-leaderboard";
 import { UserPortfolio } from "@/components/user-portfolio";
+import { ActivityFeed } from "@/components/activity-feed";
 import { MobileNav } from "@/components/mobile-nav";
 import { useIsMobile } from "@/lib/hooks";
 import { UserProfile } from "@/components/user-profile";
@@ -38,12 +39,16 @@ export default function Home() {
       {/* Desktop Tabs */}
       {!isMobile && (
         <Tabs defaultValue="leaderboard" value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="portfolio">Your Portfolio</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           </TabsList>
           <TabsContent value="portfolio" className="pt-4">
             <UserPortfolio />
+          </TabsContent>
+          <TabsContent value="activity" className="pt-4">
+            <ActivityFeed />
           </TabsContent>
           <TabsContent value="leaderboard" className="pt-4">
             <UserLeaderboard />
@@ -55,6 +60,7 @@ export default function Home() {
       {isMobile && (
         <>
           {activeTab === "portfolio" && <UserPortfolio />}
+          {activeTab === "activity" && <ActivityFeed />}
           {activeTab === "leaderboard" && <UserLeaderboard />}
           {activeTab === "profile" && user && (
             <UserProfile 

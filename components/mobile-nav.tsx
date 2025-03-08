@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Home, Trophy, BarChart2, User } from "lucide-react";
+import { Home, Trophy, BarChart2, User, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MobileNavProps {
@@ -25,6 +25,12 @@ export function MobileNav({ activeTab, onTabChange }: MobileNavProps) {
           label="Leaderboard" 
           isActive={activeTab === "leaderboard"} 
           onClick={() => onTabChange("leaderboard")} 
+        />
+        <NavItem 
+          icon={<Activity size={24} />} 
+          label="Activity" 
+          isActive={activeTab === "activity"} 
+          onClick={() => onTabChange("activity")} 
         />
         <NavItem 
           icon={<BarChart2 size={24} />} 
