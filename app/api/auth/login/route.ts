@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUser } from "@/lib/db";
+import { createUser, ensureAvatarColumn } from "@/lib/db";
 
 // Add this to prevent static generation of this API route
 export const dynamic = 'force-dynamic';
@@ -15,13 +15,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Ensure the avatar column exists
+    await ensureAvatarColumn();
+
     const user = await createUser(username.trim());
     
     return NextResponse.json({ 
       success: true, 
       user: {
         id: user.id,
-        username: user.username
+        username: user.username,
+        avatar: user.avatar || null
       }
     });
   } catch (error) {

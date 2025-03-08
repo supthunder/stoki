@@ -33,25 +33,84 @@ export const createSqlClient = () => {
   return neon(url);
 };
 
-// User functions - only used server-side in API routes
-export async function createUser(username: string) {
+// Check if avatar column exists and add it if it doesn't
+export async function ensureAvatarColumn() {
   try {
     const sql = createSqlClient();
     
-    // Try to insert the user
-    const insertResult = await sql`
-      INSERT INTO users (username)
-      VALUES (${username})
-      ON CONFLICT (username) DO NOTHING
-      RETURNING id, username
+    // Check if the avatar column exists
+    const columnExists = await sql`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'avatar'
     `;
+    
+    // If the column doesn't exist, add it
+    if (columnExists.length === 0) {
+      console.log('Adding avatar column to users table...');
+      await sql`
+        ALTER TABLE users 
+        ADD COLUMN avatar TEXT
+      `;
+      console.log('Avatar column added successfully');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Failed to ensure avatar column exists:', error);
+    return false;
+  }
+}
+
+// User functions - only used server-side in API routes
+export async function createUser(username: string) {
+  try {
+    // Ensure the avatar column exists
+    await ensureAvatarColumn();
+    
+    const sql = createSqlClient();
+    
+    // Try to insert the user
+    let insertResult;
+    try {
+      insertResult = await sql`
+        INSERT INTO users (username)
+        VALUES (${username})
+        ON CONFLICT (username) DO NOTHING
+        RETURNING id, username, avatar
+      `;
+    } catch (error: any) {
+      // If the error is about the avatar column, try without it
+      if (error.message && typeof error.message === 'string' && error.message.includes('column "avatar" does not exist')) {
+        insertResult = await sql`
+          INSERT INTO users (username)
+          VALUES (${username})
+          ON CONFLICT (username) DO NOTHING
+          RETURNING id, username
+        `;
+      } else {
+        throw error;
+      }
+    }
     
     // If no row was inserted, the user already exists
     if (insertResult.length === 0) {
       // Fetch the existing user
-      const existingUser = await sql`
-        SELECT id, username FROM users WHERE username = ${username}
-      `;
+      let existingUser;
+      try {
+        existingUser = await sql`
+          SELECT id, username, avatar FROM users WHERE username = ${username}
+        `;
+      } catch (error: any) {
+        // If the error is about the avatar column, try without it
+        if (error.message && typeof error.message === 'string' && error.message.includes('column "avatar" does not exist')) {
+          existingUser = await sql`
+            SELECT id, username FROM users WHERE username = ${username}
+          `;
+        } else {
+          throw error;
+        }
+      }
       return existingUser[0];
     }
     
@@ -64,13 +123,58 @@ export async function createUser(username: string) {
 
 export async function getUserByUsername(username: string) {
   try {
+    // Ensure the avatar column exists
+    await ensureAvatarColumn();
+    
     const sql = createSqlClient();
-    const result = await sql`
-      SELECT id, username FROM users WHERE username = ${username}
-    `;
+    let result;
+    try {
+      result = await sql`
+        SELECT id, username, avatar FROM users WHERE username = ${username}
+      `;
+    } catch (error: any) {
+      // If the error is about the avatar column, try without it
+      if (error.message && typeof error.message === 'string' && error.message.includes('column "avatar" does not exist')) {
+        result = await sql`
+          SELECT id, username FROM users WHERE username = ${username}
+        `;
+      } else {
+        throw error;
+      }
+    }
     return result.length > 0 ? result[0] : null;
   } catch (error) {
     console.error('Failed to get user:', error);
+    throw error;
+  }
+}
+
+export async function updateUserAvatar(userId: number, avatarUrl: string) {
+  try {
+    // Ensure the avatar column exists
+    await ensureAvatarColumn();
+    
+    const sql = createSqlClient();
+    let result;
+    try {
+      result = await sql`
+        UPDATE users
+        SET avatar = ${avatarUrl}
+        WHERE id = ${userId}
+        RETURNING id, username, avatar
+      `;
+    } catch (error: any) {
+      // If the error is about the avatar column, try without it
+      if (error.message && typeof error.message === 'string' && error.message.includes('column "avatar" does not exist')) {
+        console.error('Avatar column does not exist. Please run the migration.');
+        return null;
+      } else {
+        throw error;
+      }
+    }
+    return result.length > 0 ? result[0] : null;
+  } catch (error) {
+    console.error('Failed to update user avatar:', error);
     throw error;
   }
 }

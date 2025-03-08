@@ -167,6 +167,7 @@ export async function GET(request: Request) {
         SELECT 
           u.id,
           u.username,
+          u.avatar,
           s.symbol,
           s.quantity,
           s.purchase_price,
@@ -178,14 +179,16 @@ export async function GET(request: Request) {
         SELECT 
           id,
           username,
+          avatar,
           SUM(quantity * purchase_price) as total_investment
         FROM user_portfolios
-        GROUP BY id, username
+        GROUP BY id, username, avatar
         ORDER BY total_investment DESC
       )
       SELECT 
         ut.id,
         ut.username,
+        ut.avatar,
         ut.total_investment,
         json_agg(
           json_build_object(
@@ -197,7 +200,7 @@ export async function GET(request: Request) {
         ) FILTER (WHERE up.symbol IS NOT NULL) as stocks
       FROM user_totals ut
       LEFT JOIN user_portfolios up ON ut.id = up.id
-      GROUP BY ut.id, ut.username, ut.total_investment
+      GROUP BY ut.id, ut.username, ut.avatar, ut.total_investment
       ORDER BY ut.total_investment DESC
     `;
 

@@ -25,7 +25,7 @@ export default function Home() {
       {/* Header */}
       <div className="flex flex-col items-center justify-center mb-8">
         <h1 className="text-3xl font-bold tracking-tight">
-          {isMobile ? "Explore" : "Welcome to Stoki"}
+          {isMobile ? "Leaderboard" : "Welcome to Stoki"}
         </h1>
         {!isMobile && (
           <p className="text-muted-foreground mt-2">

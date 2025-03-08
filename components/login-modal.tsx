@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,13 +13,24 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useRouter } from "next/navigation";
 
-export function LoginModal() {
+interface LoginModalProps {
+  initialOpen?: boolean;
+}
+
+export function LoginModal({ initialOpen = false }: LoginModalProps) {
   const { user, login, logout } = useAuth();
   const [username, setUsername] = useState("");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const router = useRouter();
+
+  // If initialOpen changes, update the open state
+  useEffect(() => {
+    setOpen(initialOpen);
+  }, [initialOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +46,11 @@ export function LoginModal() {
       await login(username);
       setOpen(false);
       setUsername("");
+      
+      // Redirect to home page after successful login
+      if (window.location.pathname === "/login") {
+        router.push("/");
+      }
     } catch (err) {
       setError("Failed to login. Please try again.");
       console.error("Login error:", err);

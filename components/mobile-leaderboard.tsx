@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseCurrency } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 type LeaderboardUser = {
   id: number;
@@ -148,21 +149,27 @@ export function MobileLeaderboard({
               <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {/* Rank */}
-                    <div className="flex-shrink-0">
-                      {index < 3 ? (
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                          ${index === 0 ? 'bg-yellow-400 text-yellow-950' : 
-                            index === 1 ? 'bg-gray-300 text-gray-800' : 
-                            'bg-amber-700 text-amber-100'}`}
-                        >
-                          {index + 1}
-                        </div>
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-bold">
-                          {index + 1}
-                        </div>
-                      )}
+                    {/* Avatar with Rank */}
+                    <div className="relative">
+                      <Avatar className="h-10 w-10 bg-muted">
+                        {user.avatar ? (
+                          <AvatarImage 
+                            src={user.avatar.startsWith('data:') ? user.avatar : 
+                                 user.avatar.startsWith('/') ? user.avatar : 
+                                 `/${user.avatar}`} 
+                            alt={user.username} 
+                          />
+                        ) : null}
+                        <AvatarFallback>{user.username.charAt(0).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+                        ${index === 0 ? 'bg-yellow-400 text-yellow-950' : 
+                          index === 1 ? 'bg-gray-300 text-gray-800' : 
+                          index === 2 ? 'bg-amber-700 text-amber-100' :
+                          'bg-muted text-muted-foreground'}`}
+                      >
+                        {index + 1}
+                      </div>
                     </div>
                     
                     {/* Name and Net Worth */}

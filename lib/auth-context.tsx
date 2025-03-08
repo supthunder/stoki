@@ -7,6 +7,7 @@ import Cookies from "js-cookie";
 export type User = {
   id: number;
   username: string;
+  avatar?: string;
 };
 
 // Define context type
@@ -15,6 +16,7 @@ type AuthContextType = {
   loading: boolean;
   login: (username: string) => Promise<void>;
   logout: () => void;
+  updateAvatar: (avatarUrl: string, base64Image?: string) => Promise<void>;
 };
 
 // Create the auth context
@@ -117,8 +119,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateAvatar = async (avatarUrl: string, base64Image?: string) => {
+    if (!user) return;
+
+    try {
+      const response = await fetch('/api/user/avatar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          userId: user.id, 
+          avatarUrl: base64Image || avatarUrl 
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update avatar');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Update user in state and cookie
+        const updatedUser = { ...user, avatar: base64Image || avatarUrl };
+        setUser(updatedUser);
+        Cookies.set(USER_COOKIE, JSON.stringify(updatedUser), { expires: COOKIE_EXPIRATION });
+      } else {
+        throw new Error(data.message || 'Failed to update avatar');
+      }
+    } catch (error) {
+      console.error('Error updating avatar:', error);
+      throw error;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateAvatar }}>
       {children}
     </AuthContext.Provider>
   );

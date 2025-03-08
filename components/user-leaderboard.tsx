@@ -32,6 +32,7 @@ import { useIsMobile } from "@/lib/hooks";
 import { RefreshCw } from "lucide-react";
 import { MobileLeaderboard } from "./mobile-leaderboard";
 import { UserComparison } from "./user-comparison";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // Medal component for top 3 rankings
 const RankMedal = ({ rank }: { rank: number }) => {
@@ -383,7 +384,7 @@ export function UserLeaderboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[80px]">Rank</TableHead>
+                        <TableHead className="w-[100px]">Rank</TableHead>
                         <TableHead>User</TableHead>
                         <TableHead className="cursor-pointer whitespace-nowrap" onClick={() => handleSort("dailyGain")}>
                           Daily {sortColumn === "dailyGain" && (sortDirection === "desc" ? "↓" : "↑")}
@@ -413,9 +414,43 @@ export function UserLeaderboard() {
                         >
                           <TableCell className="font-medium">
                             {index < 3 ? (
-                              <RankMedal rank={index + 1} />
+                              <div className="relative">
+                                <Avatar className="h-12 w-12 bg-muted">
+                                  {user.avatar ? (
+                                    <AvatarImage 
+                                      src={user.avatar.startsWith('data:') ? user.avatar : 
+                                           user.avatar.startsWith('/') ? user.avatar : 
+                                           `/${user.avatar}`} 
+                                      alt={user.username} 
+                                    />
+                                  ) : null}
+                                  <AvatarFallback>{user.username.charAt(0).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
+                                  ${index === 0 ? 'bg-yellow-400 text-yellow-950' : 
+                                    index === 1 ? 'bg-gray-300 text-gray-800' : 
+                                    'bg-amber-700 text-amber-100'}`}
+                                >
+                                  {index + 1}
+                                </div>
+                              </div>
                             ) : (
-                              index + 1
+                              <div className="relative">
+                                <Avatar className="h-12 w-12 bg-muted">
+                                  {user.avatar ? (
+                                    <AvatarImage 
+                                      src={user.avatar.startsWith('data:') ? user.avatar : 
+                                           user.avatar.startsWith('/') ? user.avatar : 
+                                           `/${user.avatar}`} 
+                                      alt={user.username} 
+                                    />
+                                  ) : null}
+                                  <AvatarFallback>{user.username.charAt(0).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
+                                  {index + 1}
+                                </div>
+                              </div>
                             )}
                           </TableCell>
                           <TableCell className="font-medium max-w-[120px] md:max-w-none">
