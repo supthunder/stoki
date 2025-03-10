@@ -33,6 +33,7 @@ import { RefreshCw } from "lucide-react";
 import { MobileLeaderboard } from "./mobile-leaderboard";
 import { UserComparison } from "./user-comparison";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { toast } from "@/components/ui/use-toast";
 
 // Medal component for top 3 rankings
 const RankMedal = ({ rank }: { rank: number }) => {
@@ -82,6 +83,7 @@ type LeaderboardUser = {
   topGainerPercentage?: string;
   currentWorth: string;
   startingAmount: string;
+  lastUpdated?: string;
   latestPurchase?: {
     symbol: string;
     date: string;
@@ -266,6 +268,13 @@ export function UserLeaderboard() {
     setRefreshing(true);
     await fetchLeaderboardData(true, true);
     setRefreshing(false);
+    
+    // Show a toast notification
+    toast({
+      title: "Data update requested",
+      description: "The background job to update all portfolio data has been triggered. This may take a few minutes.",
+      duration: 5000,
+    });
   };
 
   // Handle refresh without database update
@@ -321,10 +330,12 @@ export function UserLeaderboard() {
   }
 
   return (
-    <div>
+    <div className="w-full">
       <div className="flex justify-between items-center mb-4">
-        <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold`}>
-          {isMobile ? "Leaderboard" : "Stock Trading Leaderboard"}
+        <h2 className="text-2xl font-bold">
+          {isMobile ? 
+            "Leaderboard" 
+            : "Stock Trading Leaderboard"}
         </h2>
         <div className="flex gap-2">
           <Button
@@ -392,12 +403,18 @@ export function UserLeaderboard() {
           ) : (
             // Desktop leaderboard with tabs
             <Tabs defaultValue="total" value={timeFrame} onValueChange={handleTimeFrameChange} className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="total">Total Gain</TabsTrigger>
-                <TabsTrigger value="daily">Today</TabsTrigger>
-                <TabsTrigger value="weekly">Weekly</TabsTrigger>
-                <TabsTrigger value="worth">Net Worth</TabsTrigger>
-              </TabsList>
+              <div className="flex justify-between items-center mb-2">
+                <TabsList className="grid w-full max-w-md grid-cols-3">
+                  <TabsTrigger value="total">All Time</TabsTrigger>
+                  <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                  <TabsTrigger value="daily">Daily</TabsTrigger>
+                </TabsList>
+                {leaderboardData.length > 0 && leaderboardData[0].lastUpdated && (
+                  <div className="text-xs text-muted-foreground">
+                    Last updated: {new Date(leaderboardData[0].lastUpdated).toLocaleString()}
+                  </div>
+                )}
+              </div>
               
               <TabsContent value="total">
                 <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
