@@ -1,0 +1,22 @@
+name: Update Portfolio Data
+
+on:
+  schedule:
+    # Run every hour from 9 AM to 4 PM on weekdays (market hours)
+    # This matches your Vercel cron schedule: "0 9-16 * * 1-5"
+    - cron: '0 9-16 * * 1-5'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  update-portfolio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Portfolio Update API
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          API_URL: ${{ secrets.API_URL }}
+        run: |
+          echo "Triggering portfolio update API..."
+          curl -X GET "${API_URL}/api/cron/update-portfolio" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" 

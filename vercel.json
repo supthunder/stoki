@@ -2,12 +2,6 @@
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/cron/update-portfolio",
-      "schedule": "0 9-16 * * 1-5"
-    }
-  ],
   "env": {
     "CRON_SECRET": "@cron-secret"
   }
