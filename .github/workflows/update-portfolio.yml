@@ -11,73 +11,12 @@ jobs:
   update-portfolio:
     runs-on: ubuntu-latest
     steps:
-      - name: Debug Environment
-        run: |
-          echo "Checking environment variables (secrets redacted)..."
-          echo "API_URL is set: ${{ secrets.API_URL != '' }}"
-          echo "CRON_SECRET is set: ${{ secrets.CRON_SECRET != '' }}"
-          echo "GitHub Actions runner: $(uname -a)"
-          echo "Current date and time: $(date)"
-          echo "Current working directory: $(pwd)"
-      
       - name: Trigger Portfolio Update API
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           API_URL: ${{ secrets.API_URL }}
         run: |
           echo "Triggering portfolio update API..."
-          
-          # Check if API_URL is properly set
-          if [ -z "$API_URL" ]; then
-            echo "ERROR: API_URL is empty. Please set this secret in your GitHub repository."
-            exit 1
-          fi
-          
-          # Print masked URL for debugging (showing domain but not full URL)
-          DOMAIN=$(echo $API_URL | sed -E 's/^https?:\/\///' | cut -d'/' -f1)
-          echo "Using API domain: $DOMAIN"
-          echo "Full endpoint path: /api/cron/update-portfolio"
-          
-          # Create a temporary file to store the response
-          RESPONSE_FILE=$(mktemp)
-          
-          echo "Sending API request..."
-          # Use curl with verbose output to a file
-          STATUS_CODE=$(curl -v -s -w "%{http_code}" -o $RESPONSE_FILE -X GET "${API_URL}/api/cron/update-portfolio" \
+          curl -X GET "${API_URL}/api/cron/update-portfolio" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            -H "Content-Type: application/json" 2>&1 | tee curl_verbose.log)
-          
-          echo "API request completed with status code: ${STATUS_CODE}"
-          
-          # Display response (truncated if too large)
-          echo "Response (first 500 characters):"
-          head -c 500 $RESPONSE_FILE
-          echo ""
-          
-          # Display response size
-          RESPONSE_SIZE=$(wc -c < $RESPONSE_FILE)
-          echo "Total response size: $RESPONSE_SIZE bytes"
-          
-          # Check for common HTTP status codes
-          if [[ "${STATUS_CODE}" -eq 200 ]]; then
-            echo "✅ API request successful (200 OK)"
-          elif [[ "${STATUS_CODE}" -eq 401 ]]; then
-            echo "❌ Authentication failed (401 Unauthorized) - Check your CRON_SECRET"
-            exit 1
-          elif [[ "${STATUS_CODE}" -eq 404 ]]; then
-            echo "❌ Endpoint not found (404 Not Found) - Check your API_URL and endpoint path"
-            exit 1
-          elif [[ "${STATUS_CODE}" -eq 500 ]]; then
-            echo "❌ Server error (500 Internal Server Error) - Check your server logs"
-            exit 1
-          elif [[ "${STATUS_CODE}" -ge 200 ]] && [[ "${STATUS_CODE}" -lt 300 ]]; then
-            echo "✅ API request successful!"
-          else
-            echo "❌ API request failed with status code: ${STATUS_CODE}"
-            exit 1
-          fi
-          
-          # Clean up
-          rm -f $RESPONSE_FILE
-          
-          echo "Workflow completed at: $(date)" 
+            -H "Content-Type: application/json" 
