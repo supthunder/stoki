@@ -1,19 +1,5 @@
 import { NextResponse } from "next/server";
-import yahooFinance from "yahoo-finance2";
-
-// Define types for the Yahoo Finance search results
-type YahooSearchResultQuote = {
-  exchange?: string;
-  shortname?: string;
-  longname?: string;
-  quoteType?: string;
-  symbol?: string;
-  index?: string;
-  score?: number;
-  typeDisp?: string;
-  isYahooFinance?: boolean;
-  name?: string;
-};
+import yahooFinance, { YahooSearchResultQuote } from "yahoo-finance2";
 
 export async function GET(request: Request) {
   try {
@@ -52,9 +38,9 @@ export async function GET(request: Request) {
     
     return NextResponse.json(stockResults);
   } catch (error) {
-    console.error('Error searching for stocks:', error);
+    console.error('Error searching stocks:', error);
     return NextResponse.json(
-      { error: 'Failed to search for stocks' },
+      { error: 'Failed to search stocks' },
       { status: 500 }
     );
   }
