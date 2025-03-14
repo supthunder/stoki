@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSqlClient } from "@/lib/db";
-import yahooFinance from "yahoo-finance2";
+import yahooFinance, { YahooQuote } from "yahoo-finance2";
 import { getCachedData, cacheData } from "@/lib/redis";
 
 // Define constants
@@ -81,14 +81,14 @@ export async function GET(request: Request) {
             const quotesResponse = await yahooFinance.quote(batch);
             
             if (Array.isArray(quotesResponse)) {
-              quotesResponse.forEach(quote => {
+              quotesResponse.forEach((quote: YahooQuote) => {
                 if (quote && quote.symbol && quote.regularMarketPrice) {
                   symbolPrices.set(quote.symbol, quote.regularMarketPrice);
                   console.log(`Got price for ${quote.symbol}: $${quote.regularMarketPrice}`);
                 }
               });
             } else if (quotesResponse) {
-              const singleQuote = quotesResponse;
+              const singleQuote = quotesResponse as YahooQuote;
               if (singleQuote.symbol && singleQuote.regularMarketPrice) {
                 symbolPrices.set(singleQuote.symbol, singleQuote.regularMarketPrice);
                 console.log(`Got price for ${singleQuote.symbol}: $${singleQuote.regularMarketPrice}`);
