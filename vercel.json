@@ -3,6 +3,6 @@
   "outputDirectory": ".next",
   "framework": "nextjs",
   "env": {
-    "CRON_SECRET": "@cron-secret"
+    "CRON_SECRET": "${CRON_SECRET}"
   }
 } 
