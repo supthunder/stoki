@@ -2,9 +2,8 @@ name: Update Portfolio Data
 
 on:
   schedule:
-    # Run every hour from 9 AM to 4 PM on weekdays (market hours)
-    # This matches your Vercel cron schedule: "0 9-16 * * 1-5"
-    - cron: '0 9-16 * * 1-5'
+    # Run every 5 minutes during market hours
+    - cron: '*/5 9-16 * * 1-5'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
@@ -17,6 +16,30 @@ jobs:
           API_URL: ${{ secrets.API_URL }}
         run: |
           echo "Triggering portfolio update API..."
-          curl -X GET "${API_URL}/api/cron/update-portfolio" \
+          echo "Time: $(date)"
+          
+          # Simple check for API_URL
+          if [ -z "$API_URL" ]; then
+            echo "ERROR: API_URL is empty"
+            exit 1
+          fi
+          
+          # Execute the curl command with basic output
+          HTTP_STATUS=$(curl -s -o response.txt -w "%{http_code}" "${API_URL}/api/cron/update-portfolio" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            -H "Content-Type: application/json" 
+            -H "Content-Type: application/json")
+          
+          echo "Response status code: ${HTTP_STATUS}"
+          
+          # Show a small part of the response for debugging
+          echo "Response preview:"
+          head -n 10 response.txt
+          
+          # Check if request was successful
+          if [[ "${HTTP_STATUS}" -ge 200 ]] && [[ "${HTTP_STATUS}" -lt 300 ]]; then
+            echo "API request successful!"
+          else
+            echo "API request failed with status code: ${HTTP_STATUS}"
+            cat response.txt
+            exit 1
+          fi 

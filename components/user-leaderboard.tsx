@@ -106,6 +106,12 @@ export function UserLeaderboard() {
   const { isMobile } = useIsMobile();
   const [viewingComparison, setViewingComparison] = useState(false);
   const [viewingProfile, setViewingProfile] = useState(false);
+  const [cacheInfo, setCacheInfo] = useState<{
+    fromCache: boolean;
+    cachedAt: string;
+    expiresAt: string;
+    timeFrame: string;
+  } | null>(null);
 
   // Fetch leaderboard data
   const fetchLeaderboardData = async (forceRefresh = false, updateDb = false) => {
@@ -138,9 +144,26 @@ export function UserLeaderboard() {
         throw new Error(`Failed to fetch leaderboard data: ${response.status}`);
       }
       
-      const data = await response.json();
-      console.log("Leaderboard data:", data);
-      setLeaderboardData(data);
+      const responseData = await response.json();
+      console.log("Leaderboard response:", responseData);
+      
+      // Handle the new response format
+      if (responseData.data && responseData.meta) {
+        setLeaderboardData(responseData.data);
+        setCacheInfo(responseData.meta);
+        
+        // Log cache information
+        if (responseData.meta.fromCache) {
+          console.log(`Using cached data from ${new Date(responseData.meta.cachedAt).toLocaleTimeString()}`);
+          console.log(`Cache expires at ${new Date(responseData.meta.expiresAt).toLocaleTimeString()}`);
+        } else {
+          console.log("Using fresh data from database");
+        }
+      } else {
+        // Handle legacy format for backward compatibility
+        setLeaderboardData(responseData);
+        setCacheInfo(null);
+      }
     } catch (err) {
       console.error("Failed to fetch leaderboard data:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch leaderboard data");
@@ -358,6 +381,22 @@ export function UserLeaderboard() {
           </Button>
         </div>
       </div>
+
+      {cacheInfo && (
+        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+          <span className={cacheInfo.fromCache ? "text-amber-500" : "text-green-500"}>
+            {cacheInfo.fromCache ? "Cached" : "Fresh"} data
+          </span>
+          {cacheInfo.fromCache && (
+            <>
+              <span>•</span>
+              <span>
+                Updated {new Date(cacheInfo.cachedAt).toLocaleTimeString()}
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       {error ? (
         <div className="bg-destructive/20 p-4 rounded-md mb-4">

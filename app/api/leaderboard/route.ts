@@ -7,6 +7,9 @@ import yahooFinance from "yahoo-finance2";
 // One day in milliseconds for calculating daily metrics
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
+// Cache TTL constants
+const LEADERBOARD_CACHE_TTL = 300; // 5 minutes in seconds
+
 // Type definitions for Yahoo Finance response
 interface YahooQuote {
   symbol: string;
@@ -148,12 +151,22 @@ export async function GET(request: Request) {
     // Create a cache key that includes the time frame
     const cacheKey = `leaderboard:data:${timeFrame}`;
     
-    // Try to get cached leaderboard data first (short TTL to ensure fresh data)
+    // Try to get cached leaderboard data first
     if (!forceRefresh) {
-      const cachedLeaderboard = await getCachedData<any[]>(cacheKey);
+      const cachedLeaderboard = await getCachedData<any>(cacheKey);
       if (cachedLeaderboard) {
         console.log(`Returning cached leaderboard data for ${timeFrame} time frame`);
-        return NextResponse.json(cachedLeaderboard);
+        
+        // Return cached data with cache metadata
+        return NextResponse.json({
+          data: cachedLeaderboard.data,
+          meta: {
+            fromCache: true,
+            timeFrame,
+            cachedAt: cachedLeaderboard.cachedAt,
+            expiresAt: cachedLeaderboard.expiresAt
+          }
+        });
       }
     }
 
@@ -249,10 +262,30 @@ export async function GET(request: Request) {
       console.log(`User ${user.username}: Total: ${user.totalGainPercentage}%, Daily: ${user.dailyGainPercentage}%, Weekly: ${user.weeklyGainPercentage}%`);
     });
 
-    // Cache the results for a short time (15 minutes)
-    await cacheData(cacheKey, formattedResults, 900);
+    // Create cache object with metadata
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (LEADERBOARD_CACHE_TTL * 1000));
     
-    return NextResponse.json(formattedResults);
+    const cacheObject = {
+      data: formattedResults,
+      cachedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      timeFrame
+    };
+
+    // Cache the results for 5 minutes
+    await cacheData(cacheKey, cacheObject, LEADERBOARD_CACHE_TTL);
+    
+    // Return the data with metadata
+    return NextResponse.json({
+      data: formattedResults,
+      meta: {
+        fromCache: false,
+        timeFrame,
+        cachedAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString()
+      }
+    });
   } catch (error) {
     console.error("Error fetching leaderboard data:", error);
     return NextResponse.json({ error: "Failed to fetch leaderboard data" }, { status: 500 });
