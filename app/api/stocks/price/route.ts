@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import yahooFinance from "yahoo-finance2";
+import yahooFinance, { YahooQuote } from "yahoo-finance2";
 import { getCachedData, cacheData } from "@/lib/redis";
 
 // Mock data for historical prices (simplified for demo)
@@ -193,8 +193,26 @@ export async function GET(request: Request) {
         }
 
         // If no historical data found, try to get current price
-        const quote = await yahooFinance.quote(symbol.toUpperCase());
-        const currentPrice = quote.regularMarketPrice;
+        const quoteResponse = await yahooFinance.quote(symbol.toUpperCase());
+        
+        // Handle the response which could be an array or a single quote
+        let currentPrice: number;
+        
+        if (Array.isArray(quoteResponse)) {
+          // If it's an array, take the first item
+          if (quoteResponse.length > 0 && quoteResponse[0].regularMarketPrice) {
+            currentPrice = quoteResponse[0].regularMarketPrice;
+          } else {
+            throw new Error("No price data available");
+          }
+        } else {
+          // It's a single quote
+          if (quoteResponse.regularMarketPrice) {
+            currentPrice = quoteResponse.regularMarketPrice;
+          } else {
+            throw new Error("No price data available");
+          }
+        }
         
         return NextResponse.json({
           symbol,
@@ -206,8 +224,26 @@ export async function GET(request: Request) {
         console.error(`Error fetching historical data for ${symbol}:`, error);
         // If historical data fetch fails, try to get current price
         try {
-          const quote = await yahooFinance.quote(symbol.toUpperCase());
-          const currentPrice = quote.regularMarketPrice;
+          const quoteResponse = await yahooFinance.quote(symbol.toUpperCase());
+          
+          // Handle the response which could be an array or a single quote
+          let currentPrice: number;
+          
+          if (Array.isArray(quoteResponse)) {
+            // If it's an array, take the first item
+            if (quoteResponse.length > 0 && quoteResponse[0].regularMarketPrice) {
+              currentPrice = quoteResponse[0].regularMarketPrice;
+            } else {
+              throw new Error("No price data available");
+            }
+          } else {
+            // It's a single quote
+            if (quoteResponse.regularMarketPrice) {
+              currentPrice = quoteResponse.regularMarketPrice;
+            } else {
+              throw new Error("No price data available");
+            }
+          }
           
           return NextResponse.json({
             symbol,
@@ -234,23 +270,38 @@ export async function GET(request: Request) {
       }
 
       // Fetch real-time quote data from Yahoo Finance
-      const quote = await yahooFinance.quote(symbol.toUpperCase());
+      const quoteResponse = await yahooFinance.quote(symbol.toUpperCase());
+      
+      // Handle the response which could be an array or a single quote
+      let quoteData: YahooQuote;
+      
+      if (Array.isArray(quoteResponse)) {
+        // If it's an array, take the first item
+        if (quoteResponse.length > 0) {
+          quoteData = quoteResponse[0];
+        } else {
+          throw new Error("No quote data available");
+        }
+      } else {
+        // It's a single quote
+        quoteData = quoteResponse;
+      }
       
       // Extract the relevant data from the quote response
       const data = {
-        symbol: quote.symbol,
-        price: quote.regularMarketPrice,
-        change: quote.regularMarketChange,
-        changePercent: quote.regularMarketChangePercent,
-        previousClose: quote.regularMarketPreviousClose,
-        open: quote.regularMarketOpen,
-        dayHigh: quote.regularMarketDayHigh,
-        dayLow: quote.regularMarketDayLow,
-        marketCap: quote.marketCap,
-        volume: quote.regularMarketVolume,
-        shortName: quote.shortName,
-        longName: quote.longName,
-        currency: quote.currency
+        symbol: quoteData.symbol,
+        price: quoteData.regularMarketPrice,
+        change: quoteData.regularMarketChange,
+        changePercent: quoteData.regularMarketChangePercent,
+        previousClose: quoteData.regularMarketPreviousClose,
+        open: quoteData.regularMarketOpen,
+        dayHigh: quoteData.regularMarketDayHigh,
+        dayLow: quoteData.regularMarketDayLow,
+        marketCap: quoteData.marketCap,
+        volume: quoteData.regularMarketVolume,
+        shortName: quoteData.shortName,
+        longName: quoteData.longName,
+        currency: quoteData.currency
       };
       
       // Cache current price data for 5 minutes
