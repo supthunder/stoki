@@ -276,11 +276,11 @@ export function UserLeaderboard() {
   };
 
   // Handle time frame change
-  const handleTimeFrameChange = (value: string) => {
+  const handleTimeFrameChange = (value: string, forceRefresh = false) => {
     setTimeFrame(value as "total" | "weekly" | "daily");
     
-    // Just fetch data normally without forcing refresh
-    fetchLeaderboardData(false, false);
+    // If forceRefresh is true, bypass cache and fetch fresh data from Yahoo Finance
+    fetchLeaderboardData(forceRefresh, forceRefresh);
   };
 
   // If viewing profile, show the profile component

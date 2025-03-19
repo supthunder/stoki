@@ -34,7 +34,7 @@ interface MobileLeaderboardProps {
   onUserClick: (user: LeaderboardUser) => void;
   currentUserId?: number;
   defaultTimeFrame?: TimeFrame;
-  onTimeFrameChange?: (timeFrame: TimeFrame) => void;
+  onTimeFrameChange?: (timeFrame: TimeFrame, refresh: boolean) => void;
 }
 
 type TimeFrame = "total" | "weekly" | "daily";
@@ -47,6 +47,8 @@ export function MobileLeaderboard({
   onTimeFrameChange
 }: MobileLeaderboardProps) {
   const [timeFrame, setTimeFrame] = useState<TimeFrame>(defaultTimeFrame);
+  const [refreshState, setRefreshState] = useState<'idle' | 'pulling' | 'refreshing'>('idle');
+  const [pullDistance, setPullDistance] = useState(0);
   
   // Add debug log
   useEffect(() => {
@@ -58,6 +60,63 @@ export function MobileLeaderboard({
     setTimeFrame(defaultTimeFrame);
   }, [defaultTimeFrame]);
 
+  // Add pull-to-refresh functionality
+  useEffect(() => {
+    let touchStart = 0;
+    let touchDistance = 0;
+    const threshold = 100;
+    let isRefreshing = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (window.scrollY === 0) {
+        touchStart = e.touches[0].clientY;
+        setRefreshState('idle');
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (touchStart > 0) {
+        touchDistance = e.touches[0].clientY - touchStart;
+        if (touchDistance > 0 && !isRefreshing) {
+          e.preventDefault();
+          setPullDistance(touchDistance);
+          setRefreshState('pulling');
+        }
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (touchDistance >= threshold && !isRefreshing) {
+        isRefreshing = true;
+        setRefreshState('refreshing');
+        // Force refresh from Yahoo Finance API by passing both refresh and updateDb as true
+        onTimeFrameChange?.(timeFrame, true);
+        setTimeout(() => {
+          isRefreshing = false;
+          setRefreshState('idle');
+          setPullDistance(0);
+          touchStart = 0;
+          touchDistance = 0;
+        }, 1000);
+      } else {
+        setRefreshState('idle');
+        setPullDistance(0);
+      }
+      touchStart = 0;
+      touchDistance = 0;
+    };
+
+    document.addEventListener('touchstart', handleTouchStart);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [timeFrame, onTimeFrameChange]);
+
   // Handle time frame change
   const handleTimeFrameChange = (value: string) => {
     const newTimeFrame = value as TimeFrame;
@@ -66,7 +125,7 @@ export function MobileLeaderboard({
     // Notify parent component if callback is provided
     if (onTimeFrameChange) {
       console.log(`Mobile leaderboard changing time frame to: ${newTimeFrame}`);
-      onTimeFrameChange(newTimeFrame);
+      onTimeFrameChange(newTimeFrame, false);
     }
   };
 
@@ -123,7 +182,50 @@ export function MobileLeaderboard({
   }, [users, timeFrame]);
 
   return (
-    <div className="space-y-4">
+    <div 
+      className="space-y-4 relative"
+      style={{
+        transform: refreshState === 'pulling' ? `translateY(${Math.min(pullDistance, 100)}px)` : 
+                  refreshState === 'refreshing' ? 'translateY(60px)' : 'translateY(0)',
+        transition: refreshState === 'pulling' ? 'none' : 'transform 0.2s ease-out'
+      }}
+    >
+      {(refreshState === 'pulling' || refreshState === 'refreshing') && (
+        <div 
+          className="absolute -top-16 left-0 right-0 flex items-center justify-center h-16 pointer-events-none"
+          style={{ opacity: Math.min(pullDistance / 100, 1) }}
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              className={`w-5 h-5 ${refreshState === 'refreshing' ? 'animate-spin' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d={refreshState === 'refreshing' ? 
+                  "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" :
+                  "M12 5l7 7-7 7-7-7 7-7z"
+                }
+              />
+            </svg>
+            <span className="text-sm">
+              {refreshState === 'pulling' ? 'Pull to refresh...' : 
+               refreshState === 'refreshing' ? 'Refreshing...' : ''}
+            </span>
+          </div>
+        </div>
+      )}
+
       <Tabs 
         defaultValue="total" 
         value={timeFrame} 
