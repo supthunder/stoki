@@ -12,7 +12,26 @@ const pool = new Pool({
 });
 
 // Create Redis connection
-const redis = new Redis(process.env.REDIS_URL);
+const redis = new Redis({
+  url: process.env.REDIS_URL,
+  maxRetriesPerRequest: 3,
+  retryStrategy(times) {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+  reconnectOnError(err) {
+    const targetError = 'READONLY';
+    if (err.message.includes(targetError)) {
+      return true;
+    }
+    return false;
+  }
+});
+
+redis.on('error', (err) => {
+  console.warn('Redis connection error:', err.message);
+  // Continue execution even if Redis is not available
+});
 
 // Main function to update all portfolio data
 async function updateAllPortfolioData() {
@@ -104,7 +123,9 @@ async function updateAllPortfolioData() {
         
         // Cache the current prices in Redis
         const pricesObject = Object.fromEntries(symbolPrices.entries());
-        await redis.set('stock:prices:current', JSON.stringify(pricesObject), 'EX', ONE_HOUR_IN_SECONDS); // 1 hour
+        await redis.set('stock:prices:current', JSON.stringify(pricesObject), 'EX', ONE_HOUR_IN_SECONDS).catch(err => {
+          console.warn('Failed to cache current prices in Redis:', err.message);
+        });
         console.log(`Cached ${symbolPrices.size} current prices in Redis`);
       } catch (err) {
         console.error('Error fetching stock prices:', err.message);
@@ -174,8 +195,14 @@ async function updateAllPortfolioData() {
         const prices1DayObject = Object.fromEntries(historicalPrices1Day.entries());
         const prices7DaysObject = Object.fromEntries(historicalPrices7Days.entries());
         
-        await redis.set('stock:prices:1day', JSON.stringify(prices1DayObject), 'EX', ONE_DAY_IN_SECONDS); // 24 hours
-        await redis.set('stock:prices:7days', JSON.stringify(prices7DaysObject), 'EX', ONE_DAY_IN_SECONDS); // 24 hours
+        await Promise.allSettled([
+          redis.set('stock:prices:1day', JSON.stringify(prices1DayObject), 'EX', ONE_DAY_IN_SECONDS).catch(err => {
+            console.warn('Failed to cache 1-day prices in Redis:', err.message);
+          }),
+          redis.set('stock:prices:7days', JSON.stringify(prices7DaysObject), 'EX', ONE_DAY_IN_SECONDS).catch(err => {
+            console.warn('Failed to cache 7-day prices in Redis:', err.message);
+          })
+        ]);
         
         console.log(`Cached ${historicalPrices1Day.size} 1-day and ${historicalPrices7Days.size} 7-day historical prices in Redis`);
       } catch (err) {
