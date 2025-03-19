@@ -279,11 +279,8 @@ export function UserLeaderboard() {
   const handleTimeFrameChange = (value: string) => {
     setTimeFrame(value as "total" | "weekly" | "daily");
     
-    // Refresh data with database update when time frame changes
-    setRefreshing(true);
-    fetchLeaderboardData(true, true).finally(() => {
-      setRefreshing(false);
-    });
+    // Just fetch data normally without forcing refresh
+    fetchLeaderboardData(false, false);
   };
 
   // If viewing profile, show the profile component
