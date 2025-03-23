@@ -1,0 +1,33 @@
+name: Update User Activity
+
+on:
+  schedule:
+    # Run every 4 hours during market hours
+    - cron: '0 13,17,21 * * 1-5'  # UTC time (ET+4)
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      VERCEL_URL: ${{ secrets.VERCEL_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Update user activity
+        run: node scripts/update-activity.js 
