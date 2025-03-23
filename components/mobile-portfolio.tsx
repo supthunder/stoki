@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlusCircle, RefreshCw, Trash2, TrendingUp, TrendingDown, ChevronRight } from "lucide-react";
@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddStockDialog } from "./add-stock-dialog";
 import { EditStockDialog } from "./edit-stock-dialog";
 import { toast } from "@/components/ui/use-toast";
+import { AddCryptoDialog } from "./add-crypto-dialog";
 
 // Types for stock data
 type Stock = {
@@ -50,6 +51,7 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
   const [deletingStockId, setDeletingStockId] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
+  const [isCryptoDialogOpen, setIsCryptoDialogOpen] = useState(false);
 
   const fetchPortfolio = async (forceRefresh = false) => {
     if (!user) return;
@@ -86,6 +88,9 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
   useEffect(() => {
     if (user) {
       fetchPortfolio();
+    } else {
+      setPortfolio([]);
+      setSummary(null);
     }
   }, [user]);
 
@@ -164,27 +169,31 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
     }).format(value);
   };
 
-  const formatPercentage = (value: number) => {
-    return value.toFixed(2);
+  const formatPercentage = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return '0.00%';
+    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
-  // Filter stocks based on active tab
-  const filteredStocks = portfolio.filter(stock => {
-    if (activeTab === "gainers") {
-      return stock.gainPercentage > 0;
-    } else if (activeTab === "losers") {
-      return stock.gainPercentage < 0;
-    }
-    return true; // "all" tab
-  });
+  // Move the filtered and sorted stocks outside of render
+  const getFilteredAndSortedStocks = useCallback(() => {
+    const filtered = portfolio.filter(stock => {
+      if (activeTab === "gainers") {
+        return stock.gainPercentage > 0;
+      } else if (activeTab === "losers") {
+        return stock.gainPercentage < 0;
+      }
+      return true; // "all" tab
+    });
 
-  // Sort stocks by gain percentage (descending for gainers, ascending for losers)
-  const sortedStocks = [...filteredStocks].sort((a, b) => {
-    if (activeTab === "losers") {
-      return a.gainPercentage - b.gainPercentage;
-    }
-    return b.gainPercentage - a.gainPercentage;
-  });
+    return [...filtered].sort((a, b) => {
+      if (activeTab === "losers") {
+        return a.gainPercentage - b.gainPercentage;
+      }
+      return b.gainPercentage - a.gainPercentage;
+    });
+  }, [portfolio, activeTab]);
+
+  const filteredStocks = useMemo(() => getFilteredAndSortedStocks(), [getFilteredAndSortedStocks]);
 
   if (error) {
     return (
@@ -192,6 +201,21 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
         <div className="text-destructive">{error}</div>
         <Button onClick={handleRetry}>Retry</Button>
       </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Portfolio</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-center text-muted-foreground py-8">
+            Please log in to view your portfolio
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -212,14 +236,33 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
             <div className="p-4 bg-card">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="text-lg font-bold">Portfolio Summary</h2>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => fetchPortfolio(true)}
-                  disabled={refreshing}
-                >
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => fetchPortfolio(true)}
+                    disabled={refreshing}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={() => setIsAddStockOpen(true)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Stock
+                    </Button>
+                    <Button 
+                      onClick={() => setIsCryptoDialogOpen(true)}
+                      size="sm"
+                    >
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Crypto
+                    </Button>
+                  </div>
+                </div>
               </div>
               
               <div className="space-y-4">
@@ -259,13 +302,6 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
                   >
                     View Performance
                     <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                  <Button 
-                    onClick={() => setIsAddStockOpen(true)}
-                    size="sm"
-                  >
-                    <PlusCircle className="h-4 w-4 mr-2" />
-                    Add Stock
                   </Button>
                 </div>
               </div>
@@ -316,7 +352,7 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
           </Card>
         ) : (
           <div className="space-y-3">
-            {sortedStocks.map((stock) => (
+            {filteredStocks.map((stock) => (
               <Card 
                 key={stock.id} 
                 className="overflow-hidden cursor-pointer hover:bg-accent/10"
@@ -389,6 +425,12 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
         open={isAddStockOpen}
         onOpenChange={setIsAddStockOpen}
         onStockAdded={handleStockAdded}
+      />
+
+      <AddCryptoDialog
+        open={isCryptoDialogOpen}
+        onOpenChange={setIsCryptoDialogOpen}
+        onCryptoAdded={handleStockAdded}
       />
 
       {/* Edit Stock Dialog */}

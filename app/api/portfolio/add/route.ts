@@ -1,71 +1,141 @@
-import { NextResponse } from "next/server";
-import { createSqlClient } from "@/lib/db";
-
-// Define the request body type
-type AddStockRequest = {
-  userId: number;
-  symbol: string;
-  companyName: string;
-  quantity: number;
-  purchasePrice: number;
-  purchaseDate?: string;
-};
+import { NextResponse } from 'next/server';
+import { sql } from '@vercel/postgres';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { userId, symbol, companyName, quantity, purchasePrice, purchaseDate } = body;
+    const { userId, symbol, quantity, purchasePrice, assetType = 'stock' } = await request.json();
 
-    const sql = createSqlClient();
+    if (!userId || !symbol || !quantity || !purchasePrice) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
 
-    // First check if the stock already exists for this user
-    const existingStock = await sql`
-      SELECT id, quantity, purchase_price
-      FROM user_stocks
-      WHERE user_id = ${userId} AND symbol = ${symbol}
+    // Use the symbol format to distinguish between stocks and crypto
+    // For crypto, prepend with @ to make it distinguishable
+    const formattedSymbol = assetType === 'crypto' ? `@${symbol.toLowerCase()}` : symbol.toUpperCase();
+    
+    // Convert values to numbers
+    const qtyNum = Number(quantity);
+    const priceNum = Number(purchasePrice);
+    const totalValue = qtyNum * priceNum;
+
+    // First check if the asset already exists for this user
+    const existingAsset = await sql`
+      SELECT * FROM "Portfolio" 
+      WHERE "userId" = ${userId} AND symbol = ${formattedSymbol};
     `;
 
-    if (existingStock.length > 0) {
-      // If stock exists, update the quantity and calculate new average purchase price
-      const currentStock = existingStock[0];
-      const totalCurrentValue = currentStock.quantity * currentStock.purchase_price;
-      const newValue = quantity * purchasePrice;
-      const totalQuantity = currentStock.quantity + quantity;
-      const averagePurchasePrice = (totalCurrentValue + newValue) / totalQuantity;
-
-      await sql`
-        UPDATE user_stocks
+    let result;
+    
+    if (existingAsset.rowCount > 0) {
+      // Update existing asset
+      const existing = existingAsset.rows[0];
+      const newQuantity = existing.quantity + qtyNum;
+      
+      // Calculate new average cost
+      const totalCost = (existing.quantity * existing.avgCost) + (qtyNum * priceNum);
+      const newAvgCost = totalCost / newQuantity;
+      
+      result = await sql`
+        UPDATE "Portfolio"
         SET 
-          quantity = ${totalQuantity},
-          purchase_price = ${averagePurchasePrice}
-        WHERE id = ${currentStock.id}
+          quantity = ${newQuantity},
+          "avgCost" = ${newAvgCost},
+          "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "userId" = ${userId} AND symbol = ${formattedSymbol}
+        RETURNING *;
       `;
     } else {
-      // If stock doesn't exist, insert new record
-      await sql`
-        INSERT INTO user_stocks (
-          user_id,
-          symbol,
-          company_name,
-          quantity,
-          purchase_price,
-          purchase_date
-        ) VALUES (
-          ${userId},
-          ${symbol},
-          ${companyName},
-          ${quantity},
-          ${purchasePrice},
-          ${purchaseDate}
+      // Insert new asset
+      result = await sql`
+        INSERT INTO "Portfolio" (id, symbol, quantity, "avgCost", "userId")
+        VALUES (
+          gen_random_uuid(),
+          ${formattedSymbol},
+          ${qtyNum},
+          ${priceNum},
+          ${userId}
         )
+        RETURNING *;
       `;
     }
 
-    return NextResponse.json({ success: true });
+    // Add transaction record
+    try {
+      await sql`
+        INSERT INTO transactions (user_id, symbol, quantity, price, type, asset_type)
+        VALUES (${userId}, ${formattedSymbol}, ${qtyNum}, ${priceNum}, 'buy', ${assetType});
+      `;
+    } catch (err) {
+      console.warn('Could not add asset_type to transactions, trying without it:', err);
+      await sql`
+        INSERT INTO transactions (user_id, symbol, quantity, price, type)
+        VALUES (${userId}, ${formattedSymbol}, ${qtyNum}, ${priceNum}, 'buy');
+      `;
+    }
+
+    // Update portfolio summary
+    try {
+      // Check if summary exists
+      const existingSummary = await sql`
+        SELECT * FROM portfolio_summaries WHERE user_id = ${userId};
+      `;
+
+      if (existingSummary.rowCount > 0) {
+        // Update existing summary
+        if (assetType === 'crypto') {
+          await sql`
+            UPDATE portfolio_summaries
+            SET 
+              total_crypto_value = COALESCE(total_crypto_value, 0) + ${totalValue},
+              total_current_value = COALESCE(total_current_value, 0) + ${totalValue},
+              total_purchase_value = COALESCE(total_purchase_value, 0) + ${totalValue},
+              last_updated = CURRENT_TIMESTAMP
+            WHERE user_id = ${userId};
+          `;
+        } else {
+          await sql`
+            UPDATE portfolio_summaries
+            SET 
+              total_stock_value = COALESCE(total_stock_value, 0) + ${totalValue},
+              total_current_value = COALESCE(total_current_value, 0) + ${totalValue},
+              total_purchase_value = COALESCE(total_purchase_value, 0) + ${totalValue},
+              last_updated = CURRENT_TIMESTAMP
+            WHERE user_id = ${userId};
+          `;
+        }
+      } else {
+        // Create new summary
+        if (assetType === 'crypto') {
+          await sql`
+            INSERT INTO portfolio_summaries (
+              user_id, total_crypto_value, total_current_value, total_purchase_value, last_updated
+            ) VALUES (
+              ${userId}, ${totalValue}, ${totalValue}, ${totalValue}, CURRENT_TIMESTAMP
+            );
+          `;
+        } else {
+          await sql`
+            INSERT INTO portfolio_summaries (
+              user_id, total_stock_value, total_current_value, total_purchase_value, last_updated
+            ) VALUES (
+              ${userId}, ${totalValue}, ${totalValue}, ${totalValue}, CURRENT_TIMESTAMP
+            );
+          `;
+        }
+      }
+    } catch (err) {
+      console.error('Error updating portfolio summary:', err);
+      // Continue even if summary update fails
+    }
+
+    return NextResponse.json(result.rows[0]);
   } catch (error) {
-    console.error("Error adding stock to portfolio:", error);
+    console.error('Error adding asset to portfolio:', error);
     return NextResponse.json(
-      { error: "Failed to add stock to portfolio" },
+      { error: 'Failed to add asset to portfolio' },
       { status: 500 }
     );
   }

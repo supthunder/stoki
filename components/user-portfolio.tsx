@@ -20,6 +20,7 @@ import { toast } from "@/components/ui/use-toast";
 import { UserProfile } from "./user-profile";
 import { useIsMobile } from "@/lib/hooks";
 import { MobilePortfolio } from "./mobile-portfolio";
+import { AddCryptoDialog } from "./add-crypto-dialog";
 
 // Types for stock data
 type Stock = {
@@ -56,6 +57,7 @@ export function UserPortfolio() {
   const [viewingProfile, setViewingProfile] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { isMobile } = useIsMobile();
+  const [isCryptoDialogOpen, setIsCryptoDialogOpen] = useState(false);
 
   const fetchPortfolio = async (forceRefresh = false) => {
     if (!user) return;
@@ -335,7 +337,7 @@ export function UserPortfolio() {
         <>
           <div className="flex justify-between items-center mb-4">
             <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold`}>
-              {isMobile ? "Portfolio" : "Your Stock Portfolio"}
+              {isMobile ? "Portfolio" : "Your Portfolio"}
             </h2>
             <div className="flex items-center gap-2">
               <Button 
@@ -347,13 +349,23 @@ export function UserPortfolio() {
                 <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 {loading ? "Refreshing..." : "Refresh"}
               </Button>
-              <Button 
-                onClick={() => setIsAddStockOpen(true)}
-                size={isMobile ? "sm" : "default"}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                {isMobile ? "Add" : "Add Stock"}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setIsAddStockOpen(true)}
+                  size={isMobile ? "sm" : "default"}
+                  variant="outline"
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  {isMobile ? "Add Stock" : "Add Stock"}
+                </Button>
+                <Button 
+                  onClick={() => setIsCryptoDialogOpen(true)}
+                  size={isMobile ? "sm" : "default"}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  {isMobile ? "Add Crypto" : "Add Crypto"}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -470,6 +482,12 @@ export function UserPortfolio() {
             open={isAddStockOpen}
             onOpenChange={setIsAddStockOpen}
             onStockAdded={handleStockAdded}
+          />
+
+          <AddCryptoDialog
+            open={isCryptoDialogOpen}
+            onOpenChange={setIsCryptoDialogOpen}
+            onCryptoAdded={handleStockAdded}
           />
 
           {selectedStock && (
