@@ -1,8 +1,40 @@
 import { NextResponse } from "next/server";
 import { createSqlClient } from "@/lib/db";
+import { cookies } from "next/headers";
 
-export async function GET() {
+// Add list of admin usernames who can access this API
+const ADMIN_USERS = ["test"];
+
+export async function GET(request: Request) {
   try {
+    // Check if the user is authenticated and is an admin
+    const cookieStore = cookies();
+    const userCookie = cookieStore.get("user");
+    
+    if (!userCookie || !userCookie.value) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+    
+    let user;
+    try {
+      user = JSON.parse(userCookie.value);
+    } catch (e) {
+      return NextResponse.json(
+        { error: "Invalid authentication" },
+        { status: 401 }
+      );
+    }
+    
+    if (!user.username || !ADMIN_USERS.includes(user.username)) {
+      return NextResponse.json(
+        { error: "Access denied" },
+        { status: 403 }
+      );
+    }
+
     const sql = createSqlClient();
     
     // Execute query to get users with their portfolio data using tagged template literal
@@ -19,12 +51,12 @@ export async function GET() {
         LEFT JOIN user_stocks s ON u.id = s.user_id
       ),
       user_totals AS (
-        SELECT 
+        SELECT
           up.user_id,
           up.username,
           SUM(up.quantity * up.purchase_price) as total_invested,
-          json_agg(
-            json_build_object(
+          jsonb_agg(
+            jsonb_build_object(
               'symbol', up.symbol,
               'quantity', up.quantity,
               'purchasePrice', up.purchase_price,
