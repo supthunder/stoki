@@ -82,7 +82,13 @@ export async function GET() {
             AND ccu.table_schema = tc.table_schema
         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name='Portfolio';
       `;
-      foreignKeys = result.rows;
+      foreignKeys = result.rows.map(row => ({
+        constraint_name: row.constraint_name,
+        table_name: row.table_name,
+        column_name: row.column_name,
+        foreign_table_name: row.foreign_table_name,
+        foreign_column_name: row.foreign_column_name
+      }));
     } catch (e) {
       console.error('Error getting foreign key info:', e);
     }
