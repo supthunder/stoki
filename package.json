@@ -29,6 +29,7 @@
     "@radix-ui/react-tooltip": "^1.0.7",
     "@tanstack/react-table": "^8.13.2",
     "@types/uuid": "^10.0.0",
+    "@vercel/og": "^0.6.5",
     "@vercel/postgres": "^0.10.0",
     "@visx/shape": "^3.5.0",
     "@visx/visx": "^3.10.2",
