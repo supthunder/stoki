@@ -18,6 +18,7 @@ A modern social stock trading application that allows users to track their portf
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
 - [Deployment](#deployment)
+- [Social Media Preview Configuration](#social-media-preview-configuration)
 
 ## Features
 
@@ -226,6 +227,52 @@ REDIS_URL=your_redis_connection_string
 ## Deployment
 
 This project is designed to be deployed on Vercel. Push your repository to GitHub and import it to Vercel for automatic deployment.
+
+## Social Media Preview Configuration
+
+The application uses Next.js 14 Metadata API to configure social media preview cards when links are shared on platforms like Twitter, Facebook, and messaging apps:
+
+1. **Open Graph / Facebook Meta Tags**: Configured in `app/layout.tsx` using the `openGraph` property
+2. **Twitter Card**: Configured in `app/layout.tsx` using the `twitter` property
+3. **Preview Image**: Uses Vercel Blob Storage for optimized image delivery
+
+```typescript
+// Example configuration in app/layout.tsx
+export const metadata: Metadata = {
+  // Basic metadata
+  title: "Stoki - Social Stock Trading App",
+  description: "Track and share your stock portfolio with friends.",
+  
+  // Open Graph metadata for Facebook, etc.
+  openGraph: {
+    type: "website",
+    url: "https://www.stoki.social/",
+    title: "Stoki - Social Stock Trading App",
+    description: "Track and share your stock portfolio with friends.",
+    images: [
+      {
+        url: "https://dp8ya6ppz4ztmtyp.public.blob.vercel-storage.com/stoki-preview-dyKTvFXkchXeDEbZPuFysBiNb046Si.png",
+        width: 1200,
+        height: 630,
+      },
+    ],
+  },
+  
+  // Twitter card metadata
+  twitter: {
+    card: "summary_large_image",
+    title: "Stoki - Social Stock Trading App",
+    description: "Track and share your stock portfolio with friends.",
+    images: ["https://dp8ya6ppz4ztmtyp.public.blob.vercel-storage.com/stoki-preview-dyKTvFXkchXeDEbZPuFysBiNb046Si.png"],
+  },
+}
+```
+
+**Important Notes:**
+- Always use absolute URLs with your actual production domain for `url` and `images`
+- Prefer direct image URLs over API routes that redirect to images
+- Use the Next.js 14 Metadata API in `layout.tsx` rather than custom `head.tsx` components
+- Test your metadata with tools like [HeyMeta](https://www.heymeta.com/) or [OpenGraph.xyz](https://www.opengraph.xyz/)
 
 ## License
 
