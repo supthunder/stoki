@@ -15,14 +15,14 @@ export default function Head() {
       <meta property="og:url" content="https://stoki-sigma.vercel.app/" />
       <meta property="og:title" content="Stoki - Social Stock Trading App" />
       <meta property="og:description" content="Track and share your stock portfolio with friends. A fun social trading platform with real-time data." />
-      <meta property="og:image" content="https://stoki-sigma.vercel.app/stoki-preview.png" />
+      <meta property="og:image" content="/stoki-preview.png" />
       
       {/* Twitter */}
       <meta property="twitter:card" content="summary_large_image" />
       <meta property="twitter:url" content="https://stoki-sigma.vercel.app/" />
       <meta property="twitter:title" content="Stoki - Social Stock Trading App" />
       <meta property="twitter:description" content="Track and share your stock portfolio with friends. A fun social trading platform with real-time data." />
-      <meta property="twitter:image" content="https://stoki-sigma.vercel.app/stoki-preview.png" />
+      <meta property="twitter:image" content="/stoki-preview.png" />
     </>
   )
 } 
