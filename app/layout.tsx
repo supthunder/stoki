@@ -19,7 +19,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "Stoki - Social Stock Trading App",
-  description: "Track and share your stock portfolio with friends",
+  description: "Track and share your stock portfolio with friends. A fun social trading platform with real-time data.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -50,6 +50,26 @@ export const metadata: Metadata = {
         url: '/android-chrome-512x512.png',
       },
     ]
+  },
+  openGraph: {
+    type: "website",
+    url: "https://www.stoki.social/",
+    title: "Stoki - Social Stock Trading App",
+    description: "Track and share your stock portfolio with friends. A fun social trading platform with real-time data.",
+    images: [
+      {
+        url: "https://dp8ya6ppz4ztmtyp.public.blob.vercel-storage.com/stoki-preview-dyKTvFXkchXeDEbZPuFysBiNb046Si.png",
+        width: 1200,
+        height: 630,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Stoki - Social Stock Trading App",
+    description: "Track and share your stock portfolio with friends. A fun social trading platform with real-time data.",
+    images: ["https://dp8ya6ppz4ztmtyp.public.blob.vercel-storage.com/stoki-preview-dyKTvFXkchXeDEbZPuFysBiNb046Si.png"],
+    creator: "@stokisocial",
   },
 };
 
