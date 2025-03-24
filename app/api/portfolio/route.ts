@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSqlClient } from "@/lib/db";
 import yahooFinance from "yahoo-finance2";
 import { getCachedData, cacheData } from "@/lib/redis";
+import { isCryptoCurrency, getCryptoPrice, getCryptoHistoricalPrice } from '@/lib/crypto-api';
 
 // Define types for our data structures
 type StockRecord = {
@@ -91,55 +92,110 @@ export async function GET(request: Request) {
     // Get all unique symbols from the portfolio
     const symbols = Array.from(new Set(result.map((stock: any) => stock.symbol)));
     
+    // Filter symbols into stocks and cryptocurrencies
+    const stockSymbols = symbols.filter(symbol => !isCryptoCurrency(symbol));
+    const cryptoSymbols = symbols.filter(isCryptoCurrency);
+    
+    console.log(`Portfolio contains ${stockSymbols.length} stocks and ${cryptoSymbols.length} cryptocurrencies`);
+    
     // Try to get cached stock prices first - only use a short cache (5 minutes)
-    const cacheKey = `yahoo:quotes:${symbols.join(',')}`;
+    const stockCacheKey = `yahoo:quotes:${stockSymbols.join(',')}`;
+    const cryptoCacheKey = `crypto:prices:${cryptoSymbols.join(',')}`;
     let symbolPrices = new Map<string, number>();
     let useCachedData = !forceRefresh;
-    const cachedPrices = useCachedData ? await getCachedData<Record<string, number>>(cacheKey) : null;
     
-    // If we have cached prices, use them
-    if (cachedPrices) {
-      console.log('Using cached stock prices from Redis (5-minute cache)');
-      Object.entries(cachedPrices).forEach(([symbol, price]) => {
-        symbolPrices.set(symbol, price);
-      });
-    } else {
-      // If no cached data, fetch from Yahoo Finance
-      console.log('Fetching fresh stock prices from Yahoo Finance');
-      try {
-        // Fetch real-time quotes for all symbols in a single batch request
-        const quotesResponse = await yahooFinance.quote(symbols);
-        
-        // Type-safe processing of Yahoo Finance response
-        // Process a single quote response
-        if (!Array.isArray(quotesResponse)) {
-          const quote = quotesResponse as YahooQuote;
-          if (quote.symbol && quote.regularMarketPrice) {
-            symbolPrices.set(quote.symbol, quote.regularMarketPrice);
-          }
-        } 
-        // Process multiple quotes
-        else {
-          for (const quote of quotesResponse) {
-            const typedQuote = quote as YahooQuote;
-            if (typedQuote.symbol && typedQuote.regularMarketPrice) {
-              symbolPrices.set(typedQuote.symbol, typedQuote.regularMarketPrice);
+    // Handle stock prices
+    if (stockSymbols.length > 0) {
+      const cachedStockPrices = useCachedData ? await getCachedData<Record<string, number>>(stockCacheKey) : null;
+      
+      // If we have cached prices, use them
+      if (cachedStockPrices) {
+        console.log('Using cached stock prices from Redis (5-minute cache)');
+        Object.entries(cachedStockPrices).forEach(([symbol, price]) => {
+          symbolPrices.set(symbol, price);
+        });
+      } else {
+        // If no cached data, fetch from Yahoo Finance
+        console.log('Fetching fresh stock prices from Yahoo Finance');
+        try {
+          // Fetch real-time quotes for all symbols in a single batch request
+          const quotesResponse = await yahooFinance.quote(stockSymbols);
+          
+          // Type-safe processing of Yahoo Finance response
+          // Process a single quote response
+          if (!Array.isArray(quotesResponse)) {
+            const quote = quotesResponse as YahooQuote;
+            if (quote.symbol && quote.regularMarketPrice) {
+              symbolPrices.set(quote.symbol, quote.regularMarketPrice);
+            }
+          } 
+          // Process multiple quotes
+          else {
+            for (const quote of quotesResponse) {
+              const typedQuote = quote as YahooQuote;
+              if (typedQuote.symbol && typedQuote.regularMarketPrice) {
+                symbolPrices.set(typedQuote.symbol, typedQuote.regularMarketPrice);
+              }
             }
           }
+          
+          // Cache the prices for 5 minutes (300 seconds) to balance freshness with API rate limits
+          if (symbolPrices.size > 0) {
+            const pricesToCache: Record<string, number> = {};
+            symbolPrices.forEach((price, symbol) => {
+              pricesToCache[symbol] = price;
+            });
+            await cacheData(stockCacheKey, pricesToCache, 300); // 5 minute cache
+            console.log('Cached new stock prices for 5 minutes:', pricesToCache);
+          }
+        } catch (e) {
+          console.error("Error processing Yahoo Finance quotes:", e);
+          // Fallback to default prices if there's an error
         }
-        
-        // Cache the prices for 5 minutes (300 seconds) to balance freshness with API rate limits
-        if (symbolPrices.size > 0) {
+      }
+    }
+    
+    // Handle cryptocurrency prices
+    if (cryptoSymbols.length > 0) {
+      const cachedCryptoPrices = useCachedData ? await getCachedData<Record<string, number>>(cryptoCacheKey) : null;
+      
+      // If we have cached prices, use them
+      if (cachedCryptoPrices) {
+        console.log('Using cached crypto prices from Redis (5-minute cache)');
+        Object.entries(cachedCryptoPrices).forEach(([symbol, price]) => {
+          symbolPrices.set(symbol, price);
+        });
+      } else {
+        // If no cached data, fetch from CoinGecko
+        console.log('Fetching fresh crypto prices from CoinGecko');
+        try {
+          // Fetch prices for each crypto
+          const cryptoPrices = await Promise.all(
+            cryptoSymbols.map(async (symbol) => {
+              const price = await getCryptoPrice(symbol);
+              return { symbol, price };
+            })
+          );
+          
+          // Add prices to the map and prepare for caching
           const pricesToCache: Record<string, number> = {};
-          symbolPrices.forEach((price, symbol) => {
-            pricesToCache[symbol] = price;
+          
+          cryptoPrices.forEach(({ symbol, price }) => {
+            if (price !== null) {
+              symbolPrices.set(symbol, price);
+              pricesToCache[symbol] = price;
+              console.log(`Got price for ${symbol}: ${price}`);
+            }
           });
-          await cacheData(cacheKey, pricesToCache, 300); // 5 minute cache
-          console.log('Cached new prices for 5 minutes:', pricesToCache);
+          
+          // Cache the prices
+          if (Object.keys(pricesToCache).length > 0) {
+            await cacheData(cryptoCacheKey, pricesToCache, 300); // 5 minute cache
+            console.log('Cached new crypto prices for 5 minutes:', pricesToCache);
+          }
+        } catch (e) {
+          console.error("Error processing CoinGecko prices:", e);
         }
-      } catch (e) {
-        console.error("Error processing Yahoo Finance quotes:", e);
-        // Fallback to default prices if there's an error
       }
     }
     
@@ -158,6 +214,14 @@ export async function GET(request: Request) {
         console.log(`Cannot get historical price for ${symbol} as date ${purchaseDate} is in the future`);
         return null;
       }
+      
+      // If it's a cryptocurrency, use CoinGecko
+      if (isCryptoCurrency(symbol)) {
+        const purchaseDateObj = new Date(purchaseDate);
+        return getCryptoHistoricalPrice(symbol, purchaseDateObj);
+      }
+      
+      // For stocks, continue with the existing implementation
       
       // Create a cache key for this historical price
       const historicalCacheKey = `yahoo:historical:${symbol}:${purchaseDate}`;

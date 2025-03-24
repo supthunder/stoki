@@ -21,6 +21,8 @@ import { UserProfile } from "./user-profile";
 import { useIsMobile } from "@/lib/hooks";
 import { MobilePortfolio } from "./mobile-portfolio";
 import { AddCryptoDialog } from "./add-crypto-dialog";
+import { isCryptoCurrency, getCryptoDisplayName } from "@/lib/crypto-api";
+import { Badge } from "@/components/ui/badge";
 
 // Types for stock data
 type Stock = {
@@ -241,7 +243,7 @@ export function UserPortfolio() {
     );
   }
 
-  // Replace the StockRow component with this new version without swipe
+  // Update the StockRow component to display cryptocurrencies properly
   const StockRow = ({ 
     stock, 
     onDelete, 
@@ -258,19 +260,32 @@ export function UserPortfolio() {
     formatPercentage: (value: number) => string;
   }) => {
     const isDeleting = deletingStockId === stock.id;
+    const isCrypto = isCryptoCurrency(stock.symbol);
     
     return (
       <TableRow key={stock.id}>
         <TableCell className="font-medium">
           <div>
-            <div>{stock.symbol}</div>
-            <div className="text-xs text-muted-foreground">{stock.companyName}</div>
+            <div>{isCrypto ? getCryptoDisplayName(stock.symbol) : stock.symbol}</div>
+            <div className="text-xs text-muted-foreground">
+              {isCrypto ? "Cryptocurrency" : stock.companyName}
+            </div>
           </div>
         </TableCell>
-        <TableCell>{stock.quantity}</TableCell>
-        <TableCell>{formatCurrency(stock.purchasePrice)}</TableCell>
+        <TableCell className="hidden md:table-cell">
+          {isCrypto ? 
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+              Crypto
+            </Badge> : 
+            stock.companyName
+          }
+        </TableCell>
+        <TableCell>
+          {isCrypto ? stock.quantity.toFixed(5) : stock.quantity}
+        </TableCell>
+        <TableCell className="hidden md:table-cell">{formatCurrency(stock.purchasePrice)}</TableCell>
+        <TableCell className="hidden md:table-cell">{new Date(stock.purchaseDate).toLocaleDateString()}</TableCell>
         <TableCell>{formatCurrency(stock.currentPrice)}</TableCell>
-        <TableCell>{new Date(stock.purchaseDate).toLocaleDateString()}</TableCell>
         <TableCell className="text-right">
           <div className="flex flex-col items-end">
             <span className={stock.gain >= 0 ? "text-green-600" : "text-red-600"}>
@@ -390,13 +405,13 @@ export function UserPortfolio() {
             </div>
           ) : portfolio.length === 0 ? (
             <div className="rounded-md border bg-card text-card-foreground p-8 text-center">
-              <h3 className="text-lg font-medium mb-2">No stocks in your portfolio</h3>
+              <h3 className="text-lg font-medium mb-2">No assets in your portfolio</h3>
               <p className="text-muted-foreground mb-4">
-                Add your first stock to start tracking your investments.
+                Add your first asset to start tracking your investments.
               </p>
               <Button onClick={() => setIsAddStockOpen(true)}>
                 <PlusCircle className="mr-2 h-4 w-4" />
-                Add Your First Stock
+                Add Your First Asset
               </Button>
             </div>
           ) : (

@@ -12,6 +12,7 @@ import { AddStockDialog } from "./add-stock-dialog";
 import { EditStockDialog } from "./edit-stock-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { AddCryptoDialog } from "./add-crypto-dialog";
+import { isCryptoCurrency, getCryptoDisplayName } from "@/lib/crypto-api";
 
 // Types for stock data
 type Stock = {
@@ -313,7 +314,7 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
       {/* Stocks List */}
       <div className="space-y-3">
         <div className="flex justify-between items-center">
-          <h2 className="text-lg font-bold">Your Stocks</h2>
+          <h2 className="text-lg font-bold">Your Assets</h2>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
             <TabsList className="grid grid-cols-3 h-8">
               <TabsTrigger value="all" className="text-xs px-2">All</TabsTrigger>
@@ -343,10 +344,10 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
         ) : portfolio.length === 0 ? (
           <Card>
             <CardContent className="p-6 text-center">
-              <p className="text-muted-foreground mb-4">You don't have any stocks in your portfolio yet.</p>
+              <p className="text-muted-foreground mb-4">You don't have any assets in your portfolio yet.</p>
               <Button onClick={() => setIsAddStockOpen(true)}>
                 <PlusCircle className="h-4 w-4 mr-2" />
-                Add Your First Stock
+                Add Your First Asset
               </Button>
             </CardContent>
           </Card>
@@ -363,12 +364,18 @@ export function MobilePortfolio({ onViewProfile }: MobilePortfolioProps) {
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center">
-                          <h3 className="font-bold">{stock.symbol}</h3>
+                          <h3 className="font-bold">{isCryptoCurrency(stock.symbol) ? getCryptoDisplayName(stock.symbol) : stock.symbol}</h3>
                           <Badge variant="outline" className="ml-2 text-xs">
-                            {stock.quantity} {stock.quantity === 1 ? 'share' : 'shares'}
+                            {isCryptoCurrency(stock.symbol) ? (
+                              `${stock.quantity.toFixed(5)} ${stock.quantity === 1 ? 'unit' : 'units'}`
+                            ) : (
+                              `${stock.quantity} ${stock.quantity === 1 ? 'share' : 'shares'}`
+                            )}
                           </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground truncate max-w-[200px]">{stock.companyName}</p>
+                        <p className="text-sm text-muted-foreground truncate max-w-[200px]">
+                          {isCryptoCurrency(stock.symbol) ? "Cryptocurrency" : stock.companyName}
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold">{formatCurrency(stock.currentValue)}</p>

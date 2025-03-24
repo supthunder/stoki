@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { parseCurrency } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getCachedLeaderboardData } from "@/lib/cache";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type LeaderboardUser = {
   id: number;
@@ -35,6 +37,7 @@ interface MobileLeaderboardProps {
   currentUserId?: number;
   defaultTimeFrame?: TimeFrame;
   onTimeFrameChange?: (timeFrame: TimeFrame, refresh: boolean) => void;
+  loading?: boolean;
 }
 
 type TimeFrame = "total" | "weekly" | "daily";
@@ -44,7 +47,8 @@ export function MobileLeaderboard({
   onUserClick, 
   currentUserId,
   defaultTimeFrame = "total",
-  onTimeFrameChange
+  onTimeFrameChange,
+  loading = false
 }: MobileLeaderboardProps) {
   const [timeFrame, setTimeFrame] = useState<TimeFrame>(defaultTimeFrame);
   const [refreshState, setRefreshState] = useState<'idle' | 'pulling' | 'refreshing'>('idle');
@@ -117,15 +121,25 @@ export function MobileLeaderboard({
     };
   }, [timeFrame, onTimeFrameChange]);
 
-  // Handle time frame change
-  const handleTimeFrameChange = (value: string) => {
+  // Handle tab change
+  const handleTabChange = (value: string) => {
     const newTimeFrame = value as TimeFrame;
     setTimeFrame(newTimeFrame);
     
-    // Notify parent component if callback is provided
+    // Check if we have locally cached data first
+    const cachedData = getCachedLeaderboardData(newTimeFrame);
+    
+    if (cachedData) {
+      // We already have fresh cached data, no need to refresh
+      if (onTimeFrameChange) {
+        onTimeFrameChange(newTimeFrame, false);
+      }
+      return;
+    }
+    
+    // No fresh cache, request new data
     if (onTimeFrameChange) {
-      console.log(`Mobile leaderboard changing time frame to: ${newTimeFrame}`);
-      onTimeFrameChange(newTimeFrame, false);
+      onTimeFrameChange(newTimeFrame, true);
     }
   };
 
@@ -181,6 +195,36 @@ export function MobileLeaderboard({
     });
   }, [users, timeFrame]);
 
+  // If in loading state, render loading skeletons
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {/* Skeleton for tabs */}
+        <Skeleton className="h-10 w-full mb-4" />
+        
+        {/* Skeleton cards for leaderboard items */}
+        {Array(5).fill(0).map((_, index) => (
+          <Card key={`skeleton-${index}`}>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div>
+                    <Skeleton className="h-5 w-24 mb-1" />
+                    <Skeleton className="h-3 w-16" />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <Skeleton className="h-7 w-16" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div 
       className="space-y-4 relative"
@@ -229,7 +273,7 @@ export function MobileLeaderboard({
       <Tabs 
         defaultValue="total" 
         value={timeFrame} 
-        onValueChange={handleTimeFrameChange}
+        onValueChange={handleTabChange}
         className="w-full"
       >
         <TabsList className="grid w-full grid-cols-3 mb-4">

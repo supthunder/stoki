@@ -1,12 +1,18 @@
 // Service Worker for Stoki PWA
 
-const CACHE_NAME = 'stoki-cache-v1';
+const CACHE_NAME = 'stoki-cache-v2';
 const urlsToCache = [
   '/',
   '/manifest.json',
-  'https://stoki.vercel.app/favicon.ico',
-  'https://stoki.vercel.app/logo192.png',
-  'https://stoki.vercel.app/logo512.png'
+  '/site.webmanifest',
+  '/favicon.ico',
+  '/favicon-16x16.png',
+  '/favicon-32x32.png',
+  '/logo192.png',
+  '/logo512.png',
+  '/apple-touch-icon.png',
+  '/android-chrome-192x192.png',
+  '/android-chrome-512x512.png'
 ];
 
 // Install event - cache assets

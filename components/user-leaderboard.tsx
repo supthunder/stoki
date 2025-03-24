@@ -33,6 +33,7 @@ import { RefreshCw } from "lucide-react";
 import { MobileLeaderboard } from "./mobile-leaderboard";
 import { UserComparison } from "./user-comparison";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cacheLeaderboardData, getCachedLeaderboardData, clearLeaderboardCache } from "@/lib/cache";
 
 // Medal component for top 3 rankings
 const RankMedal = ({ rank }: { rank: number }) => {
@@ -111,6 +112,17 @@ export function UserLeaderboard() {
       setLoading(true);
       setError(null);
       
+      // Check browser cache first if not forcing refresh
+      if (!forceRefresh) {
+        const cachedData = getCachedLeaderboardData(timeFrame);
+        
+        if (cachedData) {
+          setLeaderboardData(cachedData);
+          setLoading(false);
+          return;
+        }
+      }
+      
       let url = "/api/leaderboard";
       const params = new URLSearchParams();
       
@@ -139,6 +151,9 @@ export function UserLeaderboard() {
       const data = await response.json();
       console.log("Leaderboard data:", data);
       setLeaderboardData(data);
+      
+      // Cache the results
+      cacheLeaderboardData(timeFrame, data);
     } catch (err) {
       console.error("Failed to fetch leaderboard data:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch leaderboard data");
@@ -150,7 +165,7 @@ export function UserLeaderboard() {
   // Load data on component mount
   useEffect(() => {
     fetchLeaderboardData();
-  }, []);
+  }, [timeFrame]);
 
   // Handle sorting
   const handleSort = (column: string) => {
@@ -264,6 +279,8 @@ export function UserLeaderboard() {
   // Handle refresh with database update
   const handleRefreshWithUpdate = async () => {
     setRefreshing(true);
+    // Clear cache for current timeframe before refreshing
+    clearLeaderboardCache(timeFrame);
     await fetchLeaderboardData(true, true);
     setRefreshing(false);
   };
@@ -271,16 +288,21 @@ export function UserLeaderboard() {
   // Handle refresh without database update
   const handleRefresh = async () => {
     setRefreshing(true);
+    // Clear cache for current timeframe before refreshing
+    clearLeaderboardCache(timeFrame);
     await fetchLeaderboardData(true, false);
     setRefreshing(false);
   };
 
   // Handle time frame change
   const handleTimeFrameChange = (value: string, forceRefresh = false) => {
-    setTimeFrame(value as "total" | "weekly" | "daily");
+    const newTimeFrame = value as "total" | "weekly" | "daily";
+    setTimeFrame(newTimeFrame);
     
-    // If forceRefresh is true, bypass cache and fetch fresh data from Yahoo Finance
-    fetchLeaderboardData(forceRefresh, forceRefresh);
+    // Data will be loaded by the useEffect that depends on timeFrame
+    if (forceRefresh) {
+      fetchLeaderboardData(true, forceRefresh);
+    }
   };
 
   // If viewing profile, show the profile component
@@ -307,44 +329,79 @@ export function UserLeaderboard() {
   // If on mobile, use the mobile leaderboard component
   if (isMobile) {
     return (
-      <MobileLeaderboard 
-        users={sortedUsers} 
-        onUserClick={handleUserClick} 
-        currentUserId={user?.id}
-        defaultTimeFrame={timeFrame}
-        onTimeFrameChange={handleTimeFrameChange}
-      />
+      <>
+        {error ? (
+          <div className="bg-destructive/20 p-4 rounded-md mb-4">
+            <p className="text-destructive font-medium">{error}</p>
+            <Button 
+              variant="outline" 
+              className="mt-2" 
+              onClick={() => fetchLeaderboardData(true)}
+            >
+              Try Again
+            </Button>
+          </div>
+        ) : loading ? (
+          <div className="space-y-3">
+            {/* Show skeleton for header while loading */}
+            <div className="flex justify-between items-center mb-4">
+              <Skeleton className="h-7 w-32" />
+              <div className="flex gap-2">
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-8 w-28" />
+              </div>
+            </div>
+            
+            <MobileLeaderboard 
+              users={[]} 
+              onUserClick={() => {}} 
+              currentUserId={user?.id}
+              defaultTimeFrame={timeFrame}
+              onTimeFrameChange={handleTimeFrameChange}
+              loading={true}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Leaderboard</h2>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleRefreshWithUpdate}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                  Update All
+                </Button>
+              </div>
+            </div>
+            <MobileLeaderboard 
+              users={sortedUsers} 
+              onUserClick={handleUserClick} 
+              currentUserId={user?.id}
+              defaultTimeFrame={timeFrame}
+              onTimeFrameChange={handleTimeFrameChange}
+              loading={false}
+            />
+          </>
+        )}
+      </>
     );
   }
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold`}>
-          {isMobile ? "Leaderboard" : "Stock Trading Leaderboard"}
-        </h2>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleRefreshWithUpdate}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            Update All
-          </Button>
-        </div>
-      </div>
-
       {error ? (
         <div className="bg-destructive/20 p-4 rounded-md mb-4">
           <p className="text-destructive font-medium">{error}</p>
@@ -358,6 +415,19 @@ export function UserLeaderboard() {
         </div>
       ) : loading ? (
         <div className="space-y-3">
+          {/* Show skeleton for header while loading */}
+          <div className="flex justify-between items-center mb-4">
+            <Skeleton className="h-8 w-56" />
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-28" />
+            </div>
+          </div>
+          
+          {/* Show skeleton for tabs while loading */}
+          <Skeleton className="h-10 w-full mb-4" />
+          
+          {/* Skeleton cards for leaderboard rows */}
           {Array(5).fill(0).map((_, index) => (
             <Card key={`skeleton-${index}`}>
               <CardContent className="p-3">
@@ -377,6 +447,32 @@ export function UserLeaderboard() {
         </div>
       ) : (
         <>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold`}>
+              {isMobile ? "Leaderboard" : "Stock Trading Leaderboard"}
+            </h2>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleRefreshWithUpdate}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                Update All
+              </Button>
+            </div>
+          </div>
+
           {isMobile ? (
             // Mobile-specific leaderboard
             <MobileLeaderboard 

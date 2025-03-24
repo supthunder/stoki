@@ -1,39 +1,58 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getCryptoPrice } from '@/lib/crypto-api';
+import { cacheData, getCachedData } from '@/lib/cache';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
-
-  if (!id) {
-    return NextResponse.json({ error: 'Cryptocurrency ID is required' }, { status: 400 });
-  }
-
+export async function GET(req: NextRequest) {
   try {
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
-      {
-        headers: {
-          'x-cg-demo-api-key': process.env.COINGECKO_API_KEY || '',
-        },
-        next: { revalidate: 300 }, // Cache for 5 minutes
-      }
-    );
+    // Get ID from query parameter
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id');
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch from CoinGecko API');
+    if (!id) {
+      return NextResponse.json(
+        { error: "Missing cryptocurrency ID" },
+        { status: 400 }
+      );
     }
 
-    const data = await response.json();
+    // Try to get from cache first with a specific cache key
+    const cacheKey = `crypto:price:${id.toLowerCase()}`;
+    let price = null;
     
-    if (!data[id] || !data[id].usd) {
-      return NextResponse.json({ error: 'Price data not available' }, { status: 404 });
+    try {
+      price = await getCachedData<number>(cacheKey);
+      if (price !== null) {
+        console.log(`Using cached price for ${id}: ${price}`);
+        return NextResponse.json({ price });
+      }
+    } catch (cacheError) {
+      console.warn('Cache retrieval error:', cacheError);
     }
 
-    return NextResponse.json({ price: data[id].usd });
+    // If not in cache or cache error, fetch from API
+    console.log(`Fetching price for ${id} from CoinGecko API`);
+    price = await getCryptoPrice(id);
+
+    if (price === null) {
+      return NextResponse.json(
+        { error: "Failed to fetch cryptocurrency price" },
+        { status: 500 }
+      );
+    }
+
+    // Cache the price for 5 minutes
+    try {
+      await cacheData(cacheKey, price, 300);
+    } catch (cacheError) {
+      console.warn('Cache storage error:', cacheError);
+    }
+
+    // Return the price
+    return NextResponse.json({ price });
   } catch (error) {
     console.error('Error fetching cryptocurrency price:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch cryptocurrency price' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
