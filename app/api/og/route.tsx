@@ -1,16 +1,7 @@
 import { ImageResponse } from '@vercel/og';
 import { NextRequest } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
 export const runtime = 'edge';
-
-// Load fonts
-const interRegularFontPath = path.join(process.cwd(), 'public/fonts/inter-regular.woff2');
-const interBoldFontPath = path.join(process.cwd(), 'public/fonts/inter-bold.woff2');
-
-const interRegular = fs.readFileSync(interRegularFontPath);
-const interBold = fs.readFileSync(interBoldFontPath);
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,7 +37,7 @@ export async function GET(request: NextRequest) {
             justifyContent: 'center',
             backgroundImage: 'linear-gradient(to bottom right, #0f172a, #1e293b)',
             color: 'white',
-            fontFamily: 'Inter',
+            fontFamily: 'sans-serif',
             padding: '40px 60px',
           }}
         >
@@ -112,20 +103,6 @@ export async function GET(request: NextRequest) {
       {
         width: 1200,
         height: 630,
-        fonts: [
-          {
-            name: 'Inter',
-            data: interRegular,
-            weight: 400,
-            style: 'normal',
-          },
-          {
-            name: 'Inter',
-            data: interBold,
-            weight: 700,
-            style: 'normal',
-          },
-        ],
       },
     );
   } catch (e: any) {
