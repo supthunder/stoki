@@ -12,19 +12,19 @@ export default function Head() {
       
       {/* Open Graph / Facebook */}
       <meta property="og:type" content="website" />
-      <meta property="og:url" content="https://stoki-sigma.vercel.app/" />
+      <meta property="og:url" content="https://www.stoki.social/" />
       <meta property="og:title" content="Stoki - Social Stock Trading App" />
       <meta property="og:description" content="Track and share your stock portfolio with friends. A fun social trading platform with real-time data." />
-      <meta property="og:image" content="https://stoki-sigma.vercel.app/api/og?mode=blob" />
+      <meta property="og:image" content="https://dp8ya6ppz4ztmtyp.public.blob.vercel-storage.com/stoki-preview-dyKTvFXkchXeDEbZPuFysBiNb046Si.png" />
       <meta property="og:image:width" content="1200" />
       <meta property="og:image:height" content="630" />
       
       {/* Twitter */}
       <meta property="twitter:card" content="summary_large_image" />
-      <meta property="twitter:url" content="https://stoki-sigma.vercel.app/" />
+      <meta property="twitter:url" content="https://www.stoki.social/" />
       <meta property="twitter:title" content="Stoki - Social Stock Trading App" />
       <meta property="twitter:description" content="Track and share your stock portfolio with friends. A fun social trading platform with real-time data." />
-      <meta property="twitter:image" content="https://stoki-sigma.vercel.app/api/og?mode=blob" />
+      <meta property="twitter:image" content="https://dp8ya6ppz4ztmtyp.public.blob.vercel-storage.com/stoki-preview-dyKTvFXkchXeDEbZPuFysBiNb046Si.png" />
     </>
   )
 } 
